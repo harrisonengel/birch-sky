@@ -12,11 +12,16 @@ CONFIDENTIAL DRAFT — March 2026
 
 ## 1. Executive Summary
 
-The Information Exchange is a neutral marketplace where buyers—human or AI agent—post what they need, sellers with verified expertise or ground-level access describe what they know, and the exchange brokers the match without revealing the goods before purchase. **The trust layer is the product. The outcome database is the moat. The intelligence layer is the differentiator.**
+IE is a data marketplace that enables the commodification of information. Formerly impractical because data could not be adequaltely analyzed before purchase (Arrows Information Paradox), new trusted AI infrastructure at IE allows buyers to request, find, trust, and use purchaseable information from sellers around the world before making the purchase and without "stealing" the information. This is done through *buyers agents* who enter (or more specifically are cloned into) our walled system and can see and run their analysis with full access to seller data. Their agent can tell them what information to buy, and the exchange brokers the final transaction. If none of the sellers across the market meet the needs of the buyer, they pay nothing, and the agent never returns to reveal the secrets it learned. 
+The exchange hosts the information for sale, provides the buyer agent platform, and makes money as a broker between the two. 
 
-The product is three layers. The base layer is a raw information market with bid/ask mechanics. The second layer is a trust engine that verifies sellers, cross-references claims, and builds longitudinal accuracy scores from transaction outcomes. The third is an LLM-powered intelligence layer that decomposes complex buyer needs into atomic fulfillable requests, matches them against supply, and manages ongoing freshness. The interface to all three layers is a conversation.
+The product is three layers. 
+The base layer is a raw information market. Sellers post information for sale at a price, buyers agents have tools to search and use this information. Buyers agents can also post requests for information, and sellers can compete to fill those information requests.
+The second layer is a trust engine that verifies sellers, cross-references claims, and builds longitudinal accuracy scores from transaction outcomes. This layer is a moat that grows stronger as it learns about the sellers in the market. It provides confidence levels to buyers agents for the information they see.
+The third is the buyers agent platform, the AI-powered intelligence layer that hosts buyers agents and allows them to find information to purchase
 
-> Key insight: prior data marketplaces failed because they were supply-side catalogs. This marketplace is demand-driven, with private intermediation—the exchange sits between buyer and seller, knows both sides, and brokers the match.
+This marketplace will form an indispensible backbone of the agent economy, and represents the first of its kind true information marketplace.
+> Key insight: prior data marketplaces failed because they were supply-side catalogs of high level descriptions of the information. This was necessary because of Arrow's paradox. However, LLM based AI technology enables a new kind of dense information marketplace using "forgetful buyers agents", AI agents that have the knowlege and goals of their organization but "forget" any information they didn't pay for when they leave the market.
 
 -----
 
