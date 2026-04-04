@@ -1,0 +1,84 @@
+name: Persona Reviews
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  discover-personas:
+    if: startsWith(github.head_ref, 'claude/')
+    runs-on: ubuntu-latest
+    outputs:
+      personas: ${{ steps.find-personas.outputs.personas }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find persona skills
+        id: find-personas
+        run: |
+          personas=$(ls -d .claude/skills/*/SKILL.md 2>/dev/null | xargs -I{} dirname {} | xargs -I{} basename {} | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "personas=$personas" >> "$GITHUB_OUTPUT"
+          echo "Discovered personas: $personas"
+
+  review:
+    needs: discover-personas
+    if: startsWith(github.head_ref, 'claude/')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        persona: ${{ fromJSON(needs.discover-personas.outputs.personas) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr_diff.txt
+          echo "Diff size: $(wc -c < /tmp/pr_diff.txt) bytes"
+
+      - name: Read persona skill file
+        run: |
+          cp .claude/skills/${{ matrix.persona }}/SKILL.md /tmp/skill.md
+
+      - name: Generate persona review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          echo "$PR_BODY" > /tmp/pr_body.txt
+          python3 .github/scripts/persona_review.py \
+            --persona "${{ matrix.persona }}" \
+            --skill-file /tmp/skill.md \
+            --diff-file /tmp/pr_diff.txt \
+            --pr-title "$PR_TITLE" \
+            --pr-body-file /tmp/pr_body.txt \
+            --output /tmp/review.md
+
+      - name: Post review comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body-file /tmp/review.md \
+            --repo ${{ github.repository }}
+
+  persona-reviews-complete:
+    if: always()
+    needs: [discover-personas, review]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check review results
+        run: |
+          if [[ "${{ github.head_ref }}" != claude/* ]]; then
+            echo "Non-Claude PR — persona reviews not required."
+            exit 0
+          fi
+          if [[ "${{ needs.review.result }}" != "success" ]]; then
+            echo "One or more persona reviews failed."
+            exit 1
+          fi
+          echo "All persona reviews completed successfully."
