@@ -4,12 +4,13 @@
 # Usage:
 #   ./scripts/review-loop.sh <pr_number> [session_id]
 #
+# Designed to run inside a git worktree created by scripts/claude-worktree.sh.
 # If session_id is omitted, it is read from .claude-session-id at the repo root.
 # The session ID is updated after each Claude turn and written back to that file.
 #
 # The loop:
 #   1. Poll check_reviews.py until all verdicts are in.
-#   2. If all approved, exit successfully.
+#   2. If all approved: squash-merge the PR, remove the worktree, delete the branch.
 #   3. If changes requested, collect the review text and pass it to Claude via
 #      `claude -p --resume <session_id>`, which continues the original session.
 #   4. Claude edits files, commits, and pushes. Then loop back to step 1.
@@ -24,6 +25,7 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 REPO="harrisonengel/birch-sky"
+MAIN_REPO="$HOME/src/birch-sky"
 MAX_ITERATIONS=5
 POLL_INTERVAL=30   # seconds between verdict polls
 
@@ -32,6 +34,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 SCRIPTS_DIR="$REPO_ROOT/.github/scripts"
 SESSION_FILE="$REPO_ROOT/.claude-session-id"
+BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)"
 
 # ── Args ──────────────────────────────────────────────────────────────────────
 if [[ $# -lt 1 ]]; then
@@ -87,7 +90,15 @@ print(len(d.get('pending', [])))
 ")"
 
   if [[ "$all_approved" == "true" ]]; then
-    echo "All personas approved. PR #$PR_NUMBER is ready for your final review."
+    echo "All personas approved. Merging PR #$PR_NUMBER..."
+    gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --delete-branch
+
+    echo "Cleaning up worktree for branch '$BRANCH'..."
+    cd "$MAIN_REPO"
+    git fetch origin
+    git worktree remove "$REPO_ROOT" --force
+    git branch -d "$BRANCH" 2>/dev/null || true
+    echo "Done. Branch '$BRANCH' landed and worktree removed."
     exit 0
   fi
 
