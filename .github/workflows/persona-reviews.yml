@@ -5,28 +5,19 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  discover-personas:
-    if: startsWith(github.head_ref, 'claude/')
-    runs-on: ubuntu-latest
-    outputs:
-      personas: ${{ steps.find-personas.outputs.personas }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Find persona skills
-        id: find-personas
-        run: |
-          personas=$(ls -d .claude/skills/*/SKILL.md 2>/dev/null | xargs -I{} dirname {} | xargs -I{} basename {} | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          echo "personas=$personas" >> "$GITHUB_OUTPUT"
-          echo "Discovered personas: $personas"
-
   review:
-    needs: discover-personas
     if: startsWith(github.head_ref, 'claude/')
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        persona: ${{ fromJSON(needs.discover-personas.outputs.personas) }}
+        persona:
+          - architect
+          - decision-reviewer
+          - experimenter
+          - programmer
+          - project-manager
+          - quality-assurance
+          - security
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +59,7 @@ jobs:
 
   persona-reviews-complete:
     if: always()
-    needs: [discover-personas, review]
+    needs: [review]
     runs-on: ubuntu-latest
     steps:
       - name: Check review results
