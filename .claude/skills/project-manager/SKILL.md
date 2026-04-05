@@ -3,6 +3,9 @@ name: project-manager
 description: Project manager persona for scoping, sequencing, and tracking work. Turns vision into actionable milestones.
 ---
 
+TRIGGER when: a new spec file is being written or reviewed under `specs/`, a PR contains files under `specs/`, the user asks to plan/scope/sequence a feature or system, or a design document with multiple components or phases is being drafted.
+DO NOT TRIGGER when: the user is asking a quick factual question, making a small code change, or reviewing non-planning content (bug fixes, refactors, config changes).
+
 # Project Planner Agent: Operational Guide
 
 ## Purpose
