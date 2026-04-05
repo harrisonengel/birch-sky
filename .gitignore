@@ -1,2 +1,4 @@
 .claude-session-id
 .vite/
+node_modules/
+dist/
