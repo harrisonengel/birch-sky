@@ -44,4 +44,10 @@ Json request based APIs to access
 - BuyRequest contains the evaluation criteria and price for fullfilment
 - TODO: for demo, we will have a BuyOrder get filled by cron job and http request. full buy order fullfilment design is tbd.
 
+## Payment Flow
+- since the buyer agent comes back with the public descriptions of data to purchase and costs, payment doesnt need to go through the agent platform
+- instead, it goes straight through the market platform. 
+- market platform takes payment via stripe, verifies payment succeeds, then returns the data to the buyer and associates the data as "owned" by the buyer (so the dont have to re-buy it)
 
+## Data for Sale
+- data for sale will exist as raw file storage or sql table. the 
