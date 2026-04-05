@@ -14,3 +14,9 @@ The third is the buyers agent platform, the AI-powered intelligence layer that h
 This marketplace will form an indispensable backbone of the agent economy, and represents the first of its kind true information marketplace.
 
 > Key insight: prior data marketplaces failed because they were supply-side catalogs of high level descriptions of the information. This was necessary because of Arrow's paradox. However, LLM based AI technology enables a new kind of dense information marketplace using "forgetful buyers agents", AI agents that have the knowledge and goals of their organization but "forget" any information they didn't pay for when they leave the market.
+
+## Workflow Rules
+
+- All plans must become specs checked in to `specs/` before implementation begins.
+- Name spec files descriptively (e.g. `mvp-auth-design.md`), not `README.md`.
+- Specs live under `specs/features/<feature-name>/` or `specs/<area>/` as appropriate.
