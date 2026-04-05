@@ -2,22 +2,50 @@ name: Persona Reviews
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 jobs:
-  review:
+  determine-personas:
     if: startsWith(github.head_ref, 'claude/')
+    runs-on: ubuntu-latest
+    outputs:
+      personas: ${{ steps.get-labels.outputs.personas }}
+      has_personas: ${{ steps.get-labels.outputs.has_personas }}
+    steps:
+      - name: Extract review labels
+        id: get-labels
+        env:
+          LABELS_JSON: ${{ toJson(github.event.pull_request.labels) }}
+        run: |
+          python3 - <<'EOF'
+          import json, os
+
+          labels = json.loads(os.environ["LABELS_JSON"])
+          valid_personas = {
+              "architect", "decision-reviewer", "designer", "experimenter",
+              "programmer", "project-manager", "quality-assurance", "security"
+          }
+          personas = [
+              l["name"][len("review:"):]
+              for l in labels
+              if l["name"].startswith("review:") and l["name"][len("review:"):] in valid_personas
+          ]
+          has_personas = "true" if personas else "false"
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"personas={json.dumps(personas)}\n")
+              f.write(f"has_personas={has_personas}\n")
+
+          print(f"Personas to review: {personas}")
+          EOF
+
+  review:
+    needs: determine-personas
+    if: needs.determine-personas.outputs.has_personas == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        persona:
-          - architect
-          - decision-reviewer
-          - experimenter
-          - programmer
-          - project-manager
-          - quality-assurance
-          - security
+        persona: ${{ fromJson(needs.determine-personas.outputs.personas) }}
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
@@ -58,14 +86,15 @@ jobs:
             --repo ${{ github.repository }}
 
   persona-reviews-complete:
-    if: always()
-    needs: [review]
+    if: always() && startsWith(github.head_ref, 'claude/')
+    needs: [determine-personas, review]
     runs-on: ubuntu-latest
     steps:
       - name: Check review results
         run: |
-          if [[ "${{ github.head_ref }}" != claude/* ]]; then
-            echo "Non-Claude PR — persona reviews not required."
+          HAS_PERSONAS="${{ needs.determine-personas.outputs.has_personas }}"
+          if [[ "$HAS_PERSONAS" != "true" ]]; then
+            echo "No review:* labels — persona reviews not requested."
             exit 0
           fi
           if [[ "${{ needs.review.result }}" != "success" ]]; then

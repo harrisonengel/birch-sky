@@ -1,0 +1,162 @@
+name: Fix Loop
+
+on:
+  workflow_run:
+    workflows: ["Persona Reviews"]
+    types: [completed]
+
+jobs:
+  check-and-fix:
+    # Only run on claude/* branches; skip if the triggering workflow was cancelled
+    if: >
+      startsWith(github.event.workflow_run.head_branch, 'claude/') &&
+      github.event.workflow_run.conclusion != 'cancelled' &&
+      github.event.workflow_run.conclusion != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Get PR number for this branch
+        id: pr-info
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          PR_NUMBER=$(gh pr list \
+            --repo "$REPO" \
+            --head "$BRANCH" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+          if [[ -z "$PR_NUMBER" ]]; then
+            echo "No open PR found for branch $BRANCH — skipping."
+            echo "pr_number=" >> "$GITHUB_OUTPUT"
+          else
+            echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "Found PR #$PR_NUMBER"
+          fi
+
+      - name: Skip if no PR
+        if: steps.pr-info.outputs.pr_number == ''
+        run: |
+          echo "No PR to process."
+          exit 0
+
+      - uses: actions/checkout@v4
+        if: steps.pr-info.outputs.pr_number != ''
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Count fix iterations
+        if: steps.pr-info.outputs.pr_number != ''
+        id: iter-count
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 .github/scripts/count_iterations.py \
+            --repo "${{ github.repository }}" \
+            --pr "${{ steps.pr-info.outputs.pr_number }}" \
+            --output /tmp/iter_count.txt
+          COUNT=$(cat /tmp/iter_count.txt)
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Fix iterations so far: $COUNT"
+
+      - name: Check verdicts
+        if: steps.pr-info.outputs.pr_number != ''
+        id: check-verdicts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 .github/scripts/check_reviews.py \
+            --repo "${{ github.repository }}" \
+            --pr "${{ steps.pr-info.outputs.pr_number }}" \
+            --head-sha "${{ github.event.workflow_run.head_sha }}" \
+            --output /tmp/verdict.json
+
+      - name: All approved — notify user
+        if: >
+          steps.pr-info.outputs.pr_number != '' &&
+          steps.check-verdicts.outputs.all_approved == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ steps.pr-info.outputs.pr_number }}" \
+            --body "All persona reviews approved. Ready for your review, @harrisonengel." \
+            --repo "${{ github.repository }}"
+
+      - name: Iteration limit reached
+        if: >
+          steps.pr-info.outputs.pr_number != '' &&
+          steps.check-verdicts.outputs.all_approved == 'false' &&
+          steps.iter-count.outputs.count >= 5
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ steps.pr-info.outputs.pr_number }}" \
+            --body "Fix loop reached 5 iterations without all personas approving. Manual intervention required, @harrisonengel." \
+            --repo "${{ github.repository }}"
+
+      - name: Pending reviews — wait for all personas
+        if: >
+          steps.pr-info.outputs.pr_number != '' &&
+          steps.check-verdicts.outputs.all_approved == 'false' &&
+          steps.iter-count.outputs.count < 5 &&
+          steps.check-verdicts.outputs.pending_count != '0'
+        run: |
+          echo "Some persona reviews haven't posted yet (pending: ${{ steps.check-verdicts.outputs.pending_count }}). Waiting for next workflow_run."
+
+      - name: Apply fixes
+        if: >
+          steps.pr-info.outputs.pr_number != '' &&
+          steps.check-verdicts.outputs.all_approved == 'false' &&
+          steps.iter-count.outputs.count < 5 &&
+          steps.check-verdicts.outputs.pending_count == '0'
+        id: apply-fixes
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          python3 .github/scripts/apply_fixes.py \
+            --repo "${{ github.repository }}" \
+            --pr "${{ steps.pr-info.outputs.pr_number }}" \
+            --verdict-file /tmp/verdict.json \
+            --head-sha "${{ github.event.workflow_run.head_sha }}"
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: No actionable changes found
+        if: >
+          steps.apply-fixes.outcome == 'failure' ||
+          steps.apply-fixes.outputs.exit_code == '2'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ steps.pr-info.outputs.pr_number }}" \
+            --body "Fix agent found no actionable changes to address the review feedback. Manual intervention required, @harrisonengel." \
+            --repo "${{ github.repository }}"
+
+      - name: Post fix marker and push
+        if: steps.apply-fixes.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW_SHA=$(git rev-parse HEAD)
+          ITER=$(cat /tmp/iter_count.txt)
+          NEXT_ITER=$((ITER + 1))
+
+          # Post a marker comment so check_reviews.py can find the cutoff timestamp
+          gh pr comment "${{ steps.pr-info.outputs.pr_number }}" \
+            --body "<!-- fix-iteration-marker: ${NEXT_ITER}, sha: ${NEW_SHA} -->
+          _Fix agent applied iteration ${NEXT_ITER} — re-triggering persona reviews._" \
+            --repo "${{ github.repository }}"
+
+          git push origin HEAD:"${{ github.event.workflow_run.head_branch }}"
+          echo "Pushed fix commit — new persona review cycle will start automatically."
