@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Information Exchange</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="title-bar">THE INFORMATION EXCHANGE</header>
+    <div id="main-content">
+      <div id="chat-panel">
+        <div id="chat-messages"></div>
+        <div id="chat-input-area">
+          <input type="text" id="chat-input" placeholder="Ask your buyer's agent..." />
+          <button id="chat-send">Send</button>
+        </div>
+      </div>
+      <canvas id="scene"></canvas>
+    </div>
+    <div id="overlay" class="hidden"></div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
