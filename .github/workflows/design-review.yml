@@ -1,0 +1,62 @@
+name: Design Adherence Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'src/**'
+
+jobs:
+  design-review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff (src/ files only)
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          git diff origin/${{ github.base_ref }}...HEAD -- 'src/**' > /tmp/pr_diff.txt
+          echo "Diff size: $(wc -c < /tmp/pr_diff.txt) bytes"
+
+      - name: Run design adherence review
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 .github/scripts/design_review.py \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --diff-file /tmp/pr_diff.txt \
+            --project-context-file "$GITHUB_WORKSPACE/CLAUDE.md" \
+            --output /tmp/design_review.md
+        # Allow the step to fail so we can still post the comment below
+        continue-on-error: true
+
+      - name: Delete previous design review comments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Remove stale design review comments from earlier runs on this PR
+          gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
+            --paginate --jq '.[] | select(.body | startswith("## Design Adherence Review")) | .id' \
+          | xargs -I{} gh api -X DELETE \
+            repos/${{ github.repository }}/issues/comments/{} || true
+
+      - name: Post design review comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body-file /tmp/design_review.md \
+            --repo ${{ github.repository }}
+
+      - name: Fail if design violations found
+        if: steps.review.outcome == 'failure'
+        run: |
+          echo "Design review found violations — see PR comment for details."
+          exit 1

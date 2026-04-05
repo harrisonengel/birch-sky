@@ -55,6 +55,12 @@ Provide a focused review from your specific perspective. Be concrete and actiona
 Identify issues, risks, or improvements relevant to your role.
 If the changes look good from your perspective, say so briefly and explain why.
 Keep your review concise (under 500 words).
+
+End your review with exactly one of these lines on its own line:
+**VERDICT: APPROVED**
+or
+**VERDICT: CHANGES REQUESTED**
+Choose APPROVED only if you have no blocking issues. Choose CHANGES REQUESTED if there are issues that must be fixed before merge.
 """
 
     request_body = json.dumps({
@@ -85,7 +91,7 @@ Keep your review concise (under 500 words).
     review_text = result["content"][0]["text"]
 
     persona_display = args.persona.replace("-", " ").title()
-    formatted = f"## Persona Review: {persona_display}\n\n{review_text}"
+    formatted = f"## Persona Review: {persona_display}\n<!-- persona: {args.persona} -->\n\n{review_text}"
 
     with open(args.output, "w") as f:
         f.write(formatted)

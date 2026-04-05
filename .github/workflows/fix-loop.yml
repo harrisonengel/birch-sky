@@ -1,0 +1,102 @@
+name: Fix Loop
+
+on:
+  workflow_run:
+    workflows: ["Persona Reviews"]
+    types: [completed]
+
+jobs:
+  check-and-notify:
+    # Only run on claude/* branches; skip if the triggering workflow was cancelled
+    if: >
+      startsWith(github.event.workflow_run.head_branch, 'claude/') &&
+      github.event.workflow_run.conclusion != 'cancelled' &&
+      github.event.workflow_run.conclusion != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Get PR number for this branch
+        id: pr-info
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          PR_NUMBER=$(gh pr list \
+            --repo "$REPO" \
+            --head "$BRANCH" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+          if [[ -z "$PR_NUMBER" ]]; then
+            echo "No open PR found for branch $BRANCH — skipping."
+            echo "pr_number=" >> "$GITHUB_OUTPUT"
+          else
+            echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "Found PR #$PR_NUMBER"
+          fi
+
+      - name: Skip if no PR
+        if: steps.pr-info.outputs.pr_number == ''
+        run: |
+          echo "No PR to process."
+          exit 0
+
+      - uses: actions/checkout@v4
+        if: steps.pr-info.outputs.pr_number != ''
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Check verdicts
+        if: steps.pr-info.outputs.pr_number != ''
+        id: check-verdicts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 .github/scripts/check_reviews.py \
+            --repo "${{ github.repository }}" \
+            --pr "${{ steps.pr-info.outputs.pr_number }}" \
+            --head-sha "${{ github.event.workflow_run.head_sha }}" \
+            --output /tmp/verdict.json
+
+      - name: All approved — notify user
+        if: >
+          steps.pr-info.outputs.pr_number != '' &&
+          steps.check-verdicts.outputs.all_approved == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ steps.pr-info.outputs.pr_number }}" \
+            --body "All persona reviews approved. Ready for your review, @harrisonengel." \
+            --repo "${{ github.repository }}"
+
+      - name: Changes requested — notify user
+        if: >
+          steps.pr-info.outputs.pr_number != '' &&
+          steps.check-verdicts.outputs.all_approved == 'false' &&
+          steps.check-verdicts.outputs.pending_count == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CHANGES=$(python3 -c "
+          import json, sys
+          d = json.load(open('/tmp/verdict.json'))
+          personas = [p for p, v in d['verdicts'].items() if v == 'CHANGES REQUESTED']
+          print(', '.join(personas))
+          ")
+          gh pr comment "${{ steps.pr-info.outputs.pr_number }}" \
+            --body "Persona review(s) requesting changes: **${CHANGES}**. @harrisonengel please address the feedback above." \
+            --repo "${{ github.repository }}"
+
+      - name: Reviews still pending — waiting
+        if: >
+          steps.pr-info.outputs.pr_number != '' &&
+          steps.check-verdicts.outputs.all_approved == 'false' &&
+          steps.check-verdicts.outputs.pending_count != '0'
+        run: |
+          echo "Some persona reviews haven't posted yet. Nothing to do."
