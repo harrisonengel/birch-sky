@@ -20,3 +20,11 @@ This marketplace will form an indispensable backbone of the agent economy, and r
 - All plans must become specs checked in to `specs/` before implementation begins.
 - Name spec files descriptively (e.g. `mvp-auth-design.md`), not `README.md`.
 - Specs live under `specs/features/<feature-name>/` or `specs/<area>/` as appropriate.
+
+## Branch & PR Rules
+
+- **Never commit directly to master.** All work happens on a feature branch.
+- At the start of a session, create or continue work on a descriptive branch (e.g. `add-devops-persona`, `fix-auth-flow`).
+- Raise a PR early and update it as you go — commits should be incremental, not one giant squash at the end.
+- Every Claude session must end with all changes committed, pushed, and associated with a PR. Do not leave uncommitted work.
+- PRs require code review before merging. Do not merge your own PRs without review.
