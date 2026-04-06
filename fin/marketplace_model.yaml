@@ -78,8 +78,8 @@ assumptions:
 
   # Time horizon
   time:
-    months: 12                       # projection period in months
-    start_month: "2026-05"           # projection start
+    months: 14                       # projection period in months
+    start_month: "2026-07"           # projection start
 
 
 # ─── TARGETS (milestone gates) ────────────────────────────────────────────────
@@ -88,24 +88,19 @@ targets:
   - name: "Seed supply"
     metric: "total_listings"
     value: 100
-    by: "2026-07"
+    by: "2026-09"
 
   - name: "First transactions"
     metric: "monthly_transactions"
     value: 50
-    by: "2026-08"
+    by: "2026-11"
 
   - name: "Liquidity threshold"
     metric: "listing_liquidity_pct"
     value: 0.20
-    by: "2026-10"
+    by: "2027-01"
 
   - name: "ARR $500K"
     metric: "arr"
     value: 500000
-    by: "2027-04"
-
-  - name: "ARR $1M"
-    metric: "arr"
-    value: 1000000
-    by: "2027-10"
+    by: "2027-08"
