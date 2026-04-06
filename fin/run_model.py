@@ -30,7 +30,13 @@ def load_config(path: str) -> dict:
 
 
 def project_monthly(config: dict) -> pd.DataFrame:
-    """Project monthly metrics from assumptions over the time horizon."""
+    """Project monthly metrics from assumptions over the time horizon.
+
+    Starts from 0 sellers and 0 buyers.  The config values
+    ``sellers_onboarded`` and ``buyer_signups`` are interpreted as the
+    *monthly* onboarding rate in Month 1, growing at the configured MoM
+    rates.  Cumulative counts accumulate with churn applied each month.
+    """
     a = config["assumptions"]
     supply = a["supply"]
     demand = a["demand"]
@@ -44,72 +50,76 @@ def project_monthly(config: dict) -> pd.DataFrame:
     start = datetime.strptime(time["start_month"], "%Y-%m")
 
     rows = []
-    # Running state
+    # Running state — everything starts at zero
+    cumulative_sellers = 0.0
+    cumulative_buyers = 0.0      # total retained active buyer accounts
     cumulative_verified_outcomes = trust["verified_outcome_count"]
 
     for m in range(months):
         month_date = start + relativedelta(months=m)
         month_label = month_date.strftime("%Y-%m")
-        growth_factor = (1 + supply["supply_growth_rate_mom"]) ** m
-        txn_growth = (1 + txn["transaction_growth_rate_mom"]) ** m
 
         # --- Phase 1: Supply ---
-        sellers = supply["sellers_onboarded"] * growth_factor
+        # New sellers this month (month-1 rate * growth)
+        new_sellers = supply["sellers_onboarded"] * (1 + supply["supply_growth_rate_mom"]) ** m
+        # Churn existing base, then add new
+        cumulative_sellers = cumulative_sellers * (1 - liq["seller_churn_monthly"]) + new_sellers
+        sellers = cumulative_sellers
+
         total_listings = sellers * supply["listings_per_seller"]
         categories = min(supply["listing_category_count"] * (1 + 0.05 * m),
                          supply["listing_category_count"] * 3)  # cap at 3x
 
         # --- Phase 1b: Market Thickness ---
-        # match_rate = how likely a buyer query finds a relevant listing
-        # Saturating exponential: thin markets convert poorly, thick ones plateau
+        supply_density = total_listings / max(categories, 1)
         if thick:
-            supply_density = total_listings / max(categories, 1)
             density_hl = thick["density_halflife"]
             max_mr = thick["max_match_rate"]
             match_rate = max_mr * (1 - math.exp(-supply_density / density_hl))
         else:
-            # Legacy: no thickness model, match_rate = 1 (no gating)
-            supply_density = total_listings / max(categories, 1)
             match_rate = 1.0
 
         # --- Phase 2: Demand ---
-        # Buyer growth loosely tracks supply growth (network effects)
-        buyer_growth = (1 + supply["supply_growth_rate_mom"] * 0.8) ** m
-        buyer_signups = demand["buyer_signups"] * buyer_growth
-        active_queriers = buyer_signups * demand["buyer_to_query_conversion"]
-        total_queries = active_queriers * demand["queries_per_active_buyer"]
-        bounties = demand["bounties_posted"] * buyer_growth
+        # New buyer signups this month (grows with supply via network effects)
+        buyer_growth_rate = supply["supply_growth_rate_mom"] * 0.8
+        new_buyer_signups = demand["buyer_signups"] * (1 + buyer_growth_rate) ** m
 
-        # Fulfillment driven by supply density, not calendar time
+        # Churn increases when market is thin
+        churn_penalty = thick.get("churn_thickness_penalty", 0) * (1 - match_rate)
+        effective_churn = min(liq["buyer_churn_monthly"] + churn_penalty, 0.50)
+
+        # Activation gated by match_rate: thin market -> fewer buyers convert
+        effective_activation = txn["activation_rate"] * match_rate
+        new_active_buyers = new_buyer_signups * effective_activation
+
+        # Churn existing buyers, add newly activated ones
+        cumulative_buyers = cumulative_buyers * (1 - effective_churn) + new_active_buyers
+
+        # Fulfillment driven by supply density
         base_fulfill = demand["query_fulfillment_rate"]
         query_fulfillment = min(0.95, base_fulfill + (1 - base_fulfill) * match_rate)
         base_bounty = demand["bounty_fulfillment_rate"]
         bounty_fulfillment = min(0.80, base_bounty + (1 - base_bounty) * match_rate)
 
+        active_queriers = new_buyer_signups * demand["buyer_to_query_conversion"]
+        total_queries = active_queriers * demand["queries_per_active_buyer"]
+        bounties = demand["bounties_posted"] * (1 + buyer_growth_rate) ** m
+
         # --- Phase 3: Transactions ---
-        # Activation gated by match_rate: thin market → fewer buyers convert
-        effective_activation = txn["activation_rate"] * match_rate
-        active_buyers = buyer_signups * effective_activation
-        # Churn increases when market is thin
-        churn_penalty = thick.get("churn_thickness_penalty", 0) * (1 - match_rate)
-        effective_churn = liq["buyer_churn_monthly"] + churn_penalty
-        effective_churn = min(effective_churn, 0.50)  # cap at 50%
-        retention = (1 - effective_churn) ** m
-        retained_buyers = active_buyers * retention
-        # Add repeat buyers
+        retained_buyers = cumulative_buyers
         repeat_buyers = retained_buyers * liq["repeat_purchase_rate"]
-        effective_buyers = retained_buyers + repeat_buyers * 0.5  # repeat buyers buy more
+        effective_buyers = retained_buyers + repeat_buyers * 0.5
 
         monthly_transactions = effective_buyers * txn["purchases_per_buyer_per_month"]
         atv = txn["average_transaction_value"]
         gmv = monthly_transactions * atv
         take_rate = txn["take_rate"]
         net_revenue = gmv * take_rate
-        arr = net_revenue * 12  # annualized run rate
+        arr = net_revenue * 12
 
         # --- Phase 4: Liquidity ---
         listing_liq = monthly_transactions / max(total_listings, 1)
-        b2s_ratio = buyer_signups / max(sellers, 1)
+        b2s_ratio = new_buyer_signups / max(sellers, 1)
 
         # --- Phase 5: Trust ---
         monthly_disputes = monthly_transactions * trust["dispute_rate"]
@@ -120,6 +130,7 @@ def project_monthly(config: dict) -> pd.DataFrame:
         rows.append({
             "month": month_label,
             # Supply
+            "new_sellers": round(new_sellers),
             "sellers": round(sellers),
             "total_listings": round(total_listings),
             "categories": round(categories, 1),
@@ -127,7 +138,8 @@ def project_monthly(config: dict) -> pd.DataFrame:
             "supply_density": round(supply_density, 1),
             "match_rate": round(match_rate, 3),
             # Demand
-            "buyer_signups": round(buyer_signups),
+            "new_buyer_signups": round(new_buyer_signups),
+            "buyer_signups": round(new_buyer_signups),  # compat alias
             "active_queriers": round(active_queriers),
             "total_queries": round(total_queries),
             "bounties": round(bounties),
@@ -141,6 +153,7 @@ def project_monthly(config: dict) -> pd.DataFrame:
             "net_revenue": round(net_revenue, 2),
             "arr": round(arr, 2),
             "take_rate": take_rate,
+            "effective_churn": round(effective_churn, 3),
             # Liquidity
             "listing_liquidity": round(listing_liq, 3),
             "buyer_seller_ratio": round(b2s_ratio, 2),
@@ -197,18 +210,18 @@ def check_targets(df: pd.DataFrame, config: dict) -> pd.DataFrame:
 
 def sensitivity_analysis(config: dict) -> pd.DataFrame:
     """
-    Identify load-bearing assumptions by varying each ±20%
-    and measuring impact on Month 12 ARR.
+    Identify load-bearing assumptions by varying each +/-20%
+    and measuring impact on final-month ARR.
     """
     base_df = project_monthly(config)
     base_arr = base_df.iloc[-1]["arr"]
 
     # Assumptions to test: (section, key, label)
     test_params = [
-        ("supply", "sellers_onboarded", "Sellers onboarded"),
+        ("supply", "sellers_onboarded", "Sellers/mo onboarded"),
         ("supply", "listings_per_seller", "Listings/seller"),
         ("supply", "supply_growth_rate_mom", "Supply growth MoM"),
-        ("demand", "buyer_signups", "Buyer signups"),
+        ("demand", "buyer_signups", "Buyer signups/mo"),
         ("demand", "buyer_to_query_conversion", "Buyer query conversion"),
         ("demand", "query_fulfillment_rate", "Query fulfillment"),
         ("transactions", "activation_rate", "Activation rate"),
@@ -317,10 +330,10 @@ def main():
 
     # Key columns for display
     display_cols = [
-        "month", "sellers", "total_listings", "supply_density", "match_rate",
-        "buyer_signups", "active_buyers", "monthly_transactions",
-        "gmv", "net_revenue", "arr",
-        "listing_liquidity", "reliability_score",
+        "month", "new_sellers", "sellers", "total_listings",
+        "supply_density", "match_rate",
+        "new_buyer_signups", "active_buyers", "effective_churn",
+        "monthly_transactions", "gmv", "net_revenue", "arr",
     ]
 
     print("\n── Monthly Projection ──")

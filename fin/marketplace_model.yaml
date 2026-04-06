@@ -17,7 +17,7 @@ assumptions:
 
   # Phase 1: Supply
   supply:
-    sellers_onboarded: 50            # total sellers at end of period
+    sellers_onboarded: 50            # new sellers onboarded per month (month 1)
     listings_per_seller: 4           # avg listings per seller
     listing_category_count: 8        # distinct verticals covered
     pct_listings_complete_metadata: 0.70  # % with full metadata
@@ -26,7 +26,7 @@ assumptions:
 
   # Phase 2: Demand
   demand:
-    buyer_signups: 200               # total buyer accounts created
+    buyer_signups: 200               # new buyer signups per month (month 1)
     buyer_to_query_conversion: 0.60  # % of signups that actually search
     queries_per_active_buyer: 5      # avg queries per active buyer
     bounties_posted: 30              # total bounties posted

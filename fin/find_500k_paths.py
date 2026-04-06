@@ -29,19 +29,19 @@ def load_base():
 def run_grid():
     base = load_base()
 
-    # Grid over realistic ranges — now includes supply-side params
-    # that matter for thickness, plus density_halflife
+    # Grid: monthly onboarding rates (starting from 0) + other levers.
+    # These are month-1 rates that grow at supply_growth_rate_mom.
     grid = {
-        "sellers_onboarded": [50, 100, 150],
+        "sellers_onboarded": [10, 20, 30, 50],
         "listings_per_seller": [4, 6, 8],
-        "supply_growth_rate_mom": [0.15, 0.20, 0.25],
-        "buyer_signups": [200, 350, 500],
+        "supply_growth_rate_mom": [0.10, 0.15, 0.20],
+        "buyer_signups": [30, 50, 100, 150],
         "activation_rate": [0.30, 0.40],
         "purchases_per_buyer_per_month": [2, 3],
         "average_transaction_value": [500, 750, 1000],
         "buyer_churn_monthly": [0.04, 0.06, 0.08],
         "take_rate": [0.15, 0.18],
-        "density_halflife": [40, 60, 80],
+        "density_halflife": [60, 80],
     }
 
     keys = list(grid.keys())
@@ -90,11 +90,12 @@ def run_grid():
 
     rdf = pd.DataFrame(results)
 
-    # Filter: hits $500K by 2027-08, reasonable starting ARR
+    # Filter: hits $500K by 2027-08 but starts modestly (from zero)
+    # Month 1 ARR will always be small since we start from 0; focus on
+    # final ARR being in a reasonable range around target
     viable = rdf[
         (rdf["aug2027_arr"] >= 450_000) &
-        (rdf["aug2027_arr"] <= 800_000) &
-        (rdf["month1_arr"] < 200_000)
+        (rdf["aug2027_arr"] <= 2_000_000)
     ].copy()
 
     viable["gap_to_500k"] = viable["aug2027_arr"] - 500_000
@@ -109,6 +110,8 @@ def run_grid():
         "buyer_churn_monthly": 0.10, "take_rate": 0.15,
         "density_halflife": 80,
     }
+    # Note: grid values below baseline (e.g. 10 sellers/mo vs 50)
+    # still count as changes
     def count_changes(row):
         return sum(1 for k, v in baseline.items() if row[k] != v)
 
