@@ -14,6 +14,7 @@ Usage:
 """
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -36,6 +37,7 @@ def project_monthly(config: dict) -> pd.DataFrame:
     txn = a["transactions"]
     liq = a["liquidity"]
     trust = a["trust"]
+    thick = a.get("thickness", {})
     time = a["time"]
 
     months = time["months"]
@@ -57,6 +59,19 @@ def project_monthly(config: dict) -> pd.DataFrame:
         categories = min(supply["listing_category_count"] * (1 + 0.05 * m),
                          supply["listing_category_count"] * 3)  # cap at 3x
 
+        # --- Phase 1b: Market Thickness ---
+        # match_rate = how likely a buyer query finds a relevant listing
+        # Saturating exponential: thin markets convert poorly, thick ones plateau
+        if thick:
+            supply_density = total_listings / max(categories, 1)
+            density_hl = thick["density_halflife"]
+            max_mr = thick["max_match_rate"]
+            match_rate = max_mr * (1 - math.exp(-supply_density / density_hl))
+        else:
+            # Legacy: no thickness model, match_rate = 1 (no gating)
+            supply_density = total_listings / max(categories, 1)
+            match_rate = 1.0
+
         # --- Phase 2: Demand ---
         # Buyer growth loosely tracks supply growth (network effects)
         buyer_growth = (1 + supply["supply_growth_rate_mom"] * 0.8) ** m
@@ -65,15 +80,21 @@ def project_monthly(config: dict) -> pd.DataFrame:
         total_queries = active_queriers * demand["queries_per_active_buyer"]
         bounties = demand["bounties_posted"] * buyer_growth
 
-        # Fulfillment improves as supply deepens
-        fulfillment_improvement = min(0.20, m * 0.015)
-        query_fulfillment = min(0.95, demand["query_fulfillment_rate"] + fulfillment_improvement)
-        bounty_fulfillment = min(0.80, demand["bounty_fulfillment_rate"] + fulfillment_improvement)
+        # Fulfillment driven by supply density, not calendar time
+        base_fulfill = demand["query_fulfillment_rate"]
+        query_fulfillment = min(0.95, base_fulfill + (1 - base_fulfill) * match_rate)
+        base_bounty = demand["bounty_fulfillment_rate"]
+        bounty_fulfillment = min(0.80, base_bounty + (1 - base_bounty) * match_rate)
 
         # --- Phase 3: Transactions ---
-        active_buyers = buyer_signups * txn["activation_rate"]
-        # Retention compounds: each month some churn
-        retention = (1 - liq["buyer_churn_monthly"]) ** m
+        # Activation gated by match_rate: thin market → fewer buyers convert
+        effective_activation = txn["activation_rate"] * match_rate
+        active_buyers = buyer_signups * effective_activation
+        # Churn increases when market is thin
+        churn_penalty = thick.get("churn_thickness_penalty", 0) * (1 - match_rate)
+        effective_churn = liq["buyer_churn_monthly"] + churn_penalty
+        effective_churn = min(effective_churn, 0.50)  # cap at 50%
+        retention = (1 - effective_churn) ** m
         retained_buyers = active_buyers * retention
         # Add repeat buyers
         repeat_buyers = retained_buyers * liq["repeat_purchase_rate"]
@@ -102,6 +123,9 @@ def project_monthly(config: dict) -> pd.DataFrame:
             "sellers": round(sellers),
             "total_listings": round(total_listings),
             "categories": round(categories, 1),
+            # Thickness
+            "supply_density": round(supply_density, 1),
+            "match_rate": round(match_rate, 3),
             # Demand
             "buyer_signups": round(buyer_signups),
             "active_queriers": round(active_queriers),
@@ -197,6 +221,15 @@ def sensitivity_analysis(config: dict) -> pd.DataFrame:
         ("liquidity", "seller_churn_monthly", "Seller churn monthly"),
     ]
 
+    # Add thickness params if present
+    if "thickness" in config["assumptions"]:
+        test_params.extend([
+            ("thickness", "max_match_rate", "Max match rate"),
+            ("thickness", "density_halflife", "Density halflife"),
+            ("thickness", "churn_thickness_penalty", "Churn thickness penalty"),
+            ("thickness", "price_acceptance_rate", "Price acceptance rate"),
+        ])
+
     results = []
     for section, key, label in test_params:
         import copy
@@ -246,6 +279,7 @@ def print_summary(df: pd.DataFrame):
     print(f"  Month 1  ARR:  {format_currency(first['arr'])}")
     print(f"  Month {len(df):>2} ARR:  {format_currency(last['arr'])}")
     print(f"  Month {len(df):>2} GMV:  {format_currency(last['gmv'])}/mo")
+    print(f"  Match rate:    {first['match_rate']:>6.1%} → {last['match_rate']:>6.1%}")
     print(f"  Sellers:       {first['sellers']:>6} → {last['sellers']:>6}")
     print(f"  Listings:      {first['total_listings']:>6} → {last['total_listings']:>6}")
     print(f"  Active buyers: {first['active_buyers']:>6} → {last['active_buyers']:>6}")
@@ -283,8 +317,9 @@ def main():
 
     # Key columns for display
     display_cols = [
-        "month", "sellers", "total_listings", "buyer_signups",
-        "active_buyers", "monthly_transactions", "gmv", "net_revenue", "arr",
+        "month", "sellers", "total_listings", "supply_density", "match_rate",
+        "buyer_signups", "active_buyers", "monthly_transactions",
+        "gmv", "net_revenue", "arr",
         "listing_liquidity", "reliability_score",
     ]
 

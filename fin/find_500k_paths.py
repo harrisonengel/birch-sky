@@ -5,6 +5,8 @@ Find the minimum-viable assumption changes to hit $500K ARR by 2027-08.
 Uses a grid search over the most load-bearing assumptions to find
 scenarios where Month 16 ARR is in the $450K-$600K range (i.e., close
 to target without wild overshoot).
+
+Now includes market thickness model — supply density gates conversion.
 """
 
 import copy
@@ -27,21 +29,19 @@ def load_base():
 def run_grid():
     base = load_base()
 
-    # Load-bearing params from sensitivity analysis:
-    # 1. buyer_churn_monthly (biggest lever)
-    # 2. supply_growth_rate_mom (drives buyer growth)
-    # 3. activation_rate, purchases/buyer, ATV, take_rate, buyer_signups (all ~20% linear)
-
-    # Grid over realistic ranges
+    # Grid over realistic ranges — now includes supply-side params
+    # that matter for thickness, plus density_halflife
     grid = {
-        "buyer_signups": [200, 300, 400],
-        "activation_rate": [0.30, 0.35, 0.40],
-        "purchases_per_buyer_per_month": [2, 2.5, 3],
-        "average_transaction_value": [500, 650, 800],
+        "sellers_onboarded": [50, 100, 150],
+        "listings_per_seller": [4, 6, 8],
+        "supply_growth_rate_mom": [0.15, 0.20, 0.25],
+        "buyer_signups": [200, 350, 500],
+        "activation_rate": [0.30, 0.40],
+        "purchases_per_buyer_per_month": [2, 3],
+        "average_transaction_value": [500, 750, 1000],
         "buyer_churn_monthly": [0.04, 0.06, 0.08],
-        "supply_growth_rate_mom": [0.15, 0.18, 0.22],
-        "repeat_purchase_rate": [0.40, 0.50],
         "take_rate": [0.15, 0.18],
+        "density_halflife": [40, 60, 80],
     }
 
     keys = list(grid.keys())
@@ -55,18 +55,22 @@ def run_grid():
         a = cfg["assumptions"]
         a["time"]["months"] = 16
 
+        a["supply"]["sellers_onboarded"] = params["sellers_onboarded"]
+        a["supply"]["listings_per_seller"] = params["listings_per_seller"]
+        a["supply"]["supply_growth_rate_mom"] = params["supply_growth_rate_mom"]
         a["demand"]["buyer_signups"] = params["buyer_signups"]
         a["transactions"]["activation_rate"] = params["activation_rate"]
         a["transactions"]["purchases_per_buyer_per_month"] = params["purchases_per_buyer_per_month"]
         a["transactions"]["average_transaction_value"] = params["average_transaction_value"]
         a["liquidity"]["buyer_churn_monthly"] = params["buyer_churn_monthly"]
-        a["supply"]["supply_growth_rate_mom"] = params["supply_growth_rate_mom"]
-        a["liquidity"]["repeat_purchase_rate"] = params["repeat_purchase_rate"]
         a["transactions"]["take_rate"] = params["take_rate"]
+        a["thickness"]["density_halflife"] = params["density_halflife"]
 
         df = project_monthly(cfg)
         month1_arr = df.iloc[0]["arr"]
+        month1_match = df.iloc[0]["match_rate"]
         aug_arr = df.iloc[-1]["arr"]
+        aug_match = df.iloc[-1]["match_rate"]
 
         # Find when $500K is first hit
         hit_month = None
@@ -78,30 +82,32 @@ def run_grid():
         results.append({
             **params,
             "month1_arr": month1_arr,
+            "month1_match": month1_match,
             "aug2027_arr": aug_arr,
+            "aug_match": aug_match,
             "hit_500k": hit_month or "Never",
         })
 
     rdf = pd.DataFrame(results)
 
-    # Filter: hits $500K by 2027-08, but doesn't start above $500K in month 1
-    # and ideally hits close to target (not wildly over)
+    # Filter: hits $500K by 2027-08, reasonable starting ARR
     viable = rdf[
-        (rdf["aug2027_arr"] >= 480_000) &
-        (rdf["aug2027_arr"] <= 700_000) &
-        (rdf["month1_arr"] < 300_000)
+        (rdf["aug2027_arr"] >= 450_000) &
+        (rdf["aug2027_arr"] <= 800_000) &
+        (rdf["month1_arr"] < 200_000)
     ].copy()
 
     viable["gap_to_500k"] = viable["aug2027_arr"] - 500_000
     viable["abs_gap"] = viable["gap_to_500k"].abs()
-    viable = viable.sort_values("abs_gap")
 
     # Count how many params changed from baseline
     baseline = {
+        "sellers_onboarded": 50, "listings_per_seller": 4,
+        "supply_growth_rate_mom": 0.15,
         "buyer_signups": 200, "activation_rate": 0.30,
         "purchases_per_buyer_per_month": 2, "average_transaction_value": 500,
-        "buyer_churn_monthly": 0.10, "supply_growth_rate_mom": 0.15,
-        "repeat_purchase_rate": 0.40, "take_rate": 0.15,
+        "buyer_churn_monthly": 0.10, "take_rate": 0.15,
+        "density_halflife": 80,
     }
     def count_changes(row):
         return sum(1 for k, v in baseline.items() if row[k] != v)
@@ -109,50 +115,63 @@ def run_grid():
     viable["num_changes"] = viable.apply(count_changes, axis=1)
     viable = viable.sort_values(["num_changes", "abs_gap"])
 
-    print(f"\n{'=' * 100}")
-    print(f"  VIABLE PATHS TO ~$500K ARR BY AUG 2027")
-    print(f"  (Filtered: $480K-$700K final ARR, <$300K starting ARR)")
+    print(f"\n{'=' * 120}")
+    print(f"  VIABLE PATHS TO ~$500K ARR BY AUG 2027 (WITH MARKET THICKNESS)")
+    print(f"  (Filtered: $450K-$800K final ARR, <$200K starting ARR)")
     print(f"  Total viable: {len(viable)} out of {len(combos)} tested")
-    print(f"{'=' * 100}\n")
+    print(f"{'=' * 120}\n")
+
+    if viable.empty:
+        print("  *** No viable paths found in grid. Market thickness makes $500K much harder. ***")
+        # Show best results regardless
+        best = rdf.nlargest(10, "aug2027_arr")
+        best["aug2027_arr"] = best["aug2027_arr"].apply(format_currency)
+        best["month1_arr"] = best["month1_arr"].apply(format_currency)
+        print("\n  Top 10 by ARR (unfiltered):")
+        print(best[["sellers_onboarded", "listings_per_seller", "supply_growth_rate_mom",
+                     "buyer_signups", "activation_rate", "average_transaction_value",
+                     "buyer_churn_monthly", "density_halflife",
+                     "month1_arr", "month1_match", "aug2027_arr", "aug_match",
+                     "hit_500k"]].to_string(index=False))
+        return results
 
     # Show top 20 by fewest changes, closest to target
     display = viable.head(20).copy()
-    display["month1_arr"] = display["month1_arr"].apply(format_currency)
-    display["aug2027_arr"] = display["aug2027_arr"].apply(format_currency)
-    display["gap_to_500k"] = display["gap_to_500k"].apply(format_currency)
+    display["month1_arr_fmt"] = display["month1_arr"].apply(format_currency)
+    display["aug2027_arr_fmt"] = display["aug2027_arr"].apply(format_currency)
+    display["gap_to_500k_fmt"] = display["gap_to_500k"].apply(format_currency)
 
-    show_cols = ["buyer_signups", "activation_rate", "purchases_per_buyer_per_month",
-                 "average_transaction_value", "buyer_churn_monthly", "supply_growth_rate_mom",
-                 "repeat_purchase_rate", "take_rate", "month1_arr", "aug2027_arr",
-                 "hit_500k", "gap_to_500k", "num_changes"]
+    show_cols = ["sellers_onboarded", "listings_per_seller", "supply_growth_rate_mom",
+                 "buyer_signups", "activation_rate", "purchases_per_buyer_per_month",
+                 "average_transaction_value", "buyer_churn_monthly", "take_rate",
+                 "density_halflife", "month1_match", "aug_match",
+                 "month1_arr_fmt", "aug2027_arr_fmt", "hit_500k", "num_changes"]
     print(display[show_cols].to_string(index=False))
 
-    # Now pick the top 3 most plausible and show detailed projections
-    print(f"\n\n{'=' * 100}")
+    # Detailed projections for top 3
+    print(f"\n\n{'=' * 120}")
     print(f"  TOP 3 MOST LIKELY PATHS (fewest assumption changes, closest to $500K)")
-    print(f"{'=' * 100}")
+    print(f"{'=' * 120}")
 
     for i, (_, row) in enumerate(viable.head(3).iterrows()):
         cfg = copy.deepcopy(base)
         a = cfg["assumptions"]
         a["time"]["months"] = 16
+        a["supply"]["sellers_onboarded"] = row["sellers_onboarded"]
+        a["supply"]["listings_per_seller"] = row["listings_per_seller"]
+        a["supply"]["supply_growth_rate_mom"] = row["supply_growth_rate_mom"]
         a["demand"]["buyer_signups"] = row["buyer_signups"]
         a["transactions"]["activation_rate"] = row["activation_rate"]
         a["transactions"]["purchases_per_buyer_per_month"] = row["purchases_per_buyer_per_month"]
         a["transactions"]["average_transaction_value"] = row["average_transaction_value"]
         a["liquidity"]["buyer_churn_monthly"] = row["buyer_churn_monthly"]
-        a["supply"]["supply_growth_rate_mom"] = row["supply_growth_rate_mom"]
-        a["liquidity"]["repeat_purchase_rate"] = row["repeat_purchase_rate"]
         a["transactions"]["take_rate"] = row["take_rate"]
+        a["thickness"]["density_halflife"] = row["density_halflife"]
 
         df = project_monthly(cfg)
 
         changes = []
-        bl = {"buyer_signups": 200, "activation_rate": 0.30,
-              "purchases_per_buyer_per_month": 2, "average_transaction_value": 500,
-              "buyer_churn_monthly": 0.10, "supply_growth_rate_mom": 0.15,
-              "repeat_purchase_rate": 0.40, "take_rate": 0.15}
-        for k, v in bl.items():
+        for k, v in baseline.items():
             if row[k] != v:
                 changes.append(f"  {k}: {v} → {row[k]}")
 
@@ -161,14 +180,14 @@ def run_grid():
             print(c)
         print()
 
-        cols = ["month", "sellers", "buyer_signups", "active_buyers",
+        cols = ["month", "sellers", "total_listings", "supply_density", "match_rate",
+                "buyer_signups", "active_buyers",
                 "monthly_transactions", "gmv", "net_revenue", "arr"]
         disp = df[cols].copy()
         disp["gmv"] = disp["gmv"].apply(format_currency)
         disp["net_revenue"] = disp["net_revenue"].apply(format_currency)
-        disp["arr_raw"] = df["arr"]
         disp["arr"] = disp["arr"].apply(format_currency)
-        print(disp.drop(columns=["arr_raw"]).to_string(index=False))
+        print(disp.to_string(index=False))
         print()
 
 

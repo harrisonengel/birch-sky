@@ -59,6 +59,13 @@ assumptions:
     verified_outcome_count: 0        # starting verified outcomes (grows)
     reliability_score_improvement_mom: 0.02  # monthly score improvement
 
+  # Phase 6: Market thickness
+  thickness:
+    max_match_rate: 0.65                 # ceiling P(query finds relevant listing) at full density
+    density_halflife: 80                 # listings/category to reach 50% of max match rate
+    churn_thickness_penalty: 0.08        # extra monthly churn when market is thin (match_rate ≈ 0)
+    price_acceptance_rate: 0.70          # P(buyer accepts price | match found)
+
   # Time horizon
   time:
     months: 12                       # projection period in months

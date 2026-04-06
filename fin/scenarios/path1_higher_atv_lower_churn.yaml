@@ -58,6 +58,12 @@ assumptions:
     verified_outcome_count: 0
     reliability_score_improvement_mom: 0.02
 
+  thickness:
+    max_match_rate: 0.65
+    density_halflife: 80
+    churn_thickness_penalty: 0.08
+    price_acceptance_rate: 0.70
+
   time:
     months: 16
     start_month: "2026-05"

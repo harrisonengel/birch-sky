@@ -197,7 +197,8 @@ def run_scenarios():
             df = r["df"]
             print(f"\n--- {r['name']} ---")
             print(f"    {r['notes']}")
-            cols = ["month", "sellers", "buyer_signups", "active_buyers",
+            cols = ["month", "sellers", "total_listings", "match_rate",
+                    "buyer_signups", "active_buyers",
                     "monthly_transactions", "gmv", "net_revenue", "arr"]
             display = df[cols].copy()
             display["gmv"] = display["gmv"].apply(format_currency)
