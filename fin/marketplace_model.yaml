@@ -66,6 +66,16 @@ assumptions:
     churn_thickness_penalty: 0.08        # extra monthly churn when market is thin (match_rate ≈ 0)
     price_acceptance_rate: 0.70          # P(buyer accepts price | match found)
 
+  # Phase 7: Launch strategy — seller-first frontloading
+  launch:
+    seller_only_months: 3                # months of seller-only acquisition before any buyers
+    buyer_launch_match_rate: 0.30        # match_rate threshold to start buyer onboarding
+    buyer_ramp_months: 4                 # months to ramp buyer acquisition from 0 to full rate
+    seller_frontload_multiplier: 1.5     # seller acquisition boost during frontload (1.5x normal)
+    # During frontload: sellers onboarded at multiplier × base rate
+    # During ramp: buyer_signups scale linearly from 0 to full rate over ramp_months
+    # After ramp: normal growth for both sides
+
   # Time horizon
   time:
     months: 12                       # projection period in months

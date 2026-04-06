@@ -44,24 +44,39 @@ def project_monthly(config: dict) -> pd.DataFrame:
     liq = a["liquidity"]
     trust = a["trust"]
     thick = a.get("thickness", {})
+    launch = a.get("launch", {})
     time = a["time"]
 
     months = time["months"]
     start = datetime.strptime(time["start_month"], "%Y-%m")
+
+    # Launch strategy params
+    seller_only_months = launch.get("seller_only_months", 0)
+    buyer_launch_mr = launch.get("buyer_launch_match_rate", 0.0)
+    buyer_ramp_months = launch.get("buyer_ramp_months", 0)
+    seller_frontload_mult = launch.get("seller_frontload_multiplier", 1.0)
 
     rows = []
     # Running state — everything starts at zero
     cumulative_sellers = 0.0
     cumulative_buyers = 0.0      # total retained active buyer accounts
     cumulative_verified_outcomes = trust["verified_outcome_count"]
+    buyer_launched = False        # has buyer onboarding started?
+    buyer_launch_month = None     # when did it start?
 
     for m in range(months):
         month_date = start + relativedelta(months=m)
         month_label = month_date.strftime("%Y-%m")
 
+        # --- Determine launch phase ---
+        in_seller_frontload = m < seller_only_months
+        # After frontload, buyer launch triggers when match_rate >= threshold
+        # (checked against *previous* month's match_rate, or 0 for month 0)
+
         # --- Phase 1: Supply ---
-        # New sellers this month (month-1 rate * growth)
-        new_sellers = supply["sellers_onboarded"] * (1 + supply["supply_growth_rate_mom"]) ** m
+        # During seller frontload, boost seller acquisition
+        seller_mult = seller_frontload_mult if in_seller_frontload else 1.0
+        new_sellers = supply["sellers_onboarded"] * seller_mult * (1 + supply["supply_growth_rate_mom"]) ** m
         # Churn existing base, then add new
         cumulative_sellers = cumulative_sellers * (1 - liq["seller_churn_monthly"]) + new_sellers
         sellers = cumulative_sellers
@@ -79,10 +94,26 @@ def project_monthly(config: dict) -> pd.DataFrame:
         else:
             match_rate = 1.0
 
-        # --- Phase 2: Demand ---
+        # --- Phase 2: Demand (with launch gating) ---
+        # Check if buyers should launch
+        if not buyer_launched:
+            if not in_seller_frontload and match_rate >= buyer_launch_mr:
+                buyer_launched = True
+                buyer_launch_month = m
+
+        # Compute buyer ramp factor: 0 during frontload, ramps 0->1, then 1.0
+        if not buyer_launched:
+            buyer_ramp_factor = 0.0
+        elif buyer_ramp_months > 0:
+            months_since_launch = m - buyer_launch_month
+            buyer_ramp_factor = min(1.0, months_since_launch / buyer_ramp_months)
+        else:
+            buyer_ramp_factor = 1.0
+
         # New buyer signups this month (grows with supply via network effects)
         buyer_growth_rate = supply["supply_growth_rate_mom"] * 0.8
-        new_buyer_signups = demand["buyer_signups"] * (1 + buyer_growth_rate) ** m
+        base_buyer_signups = demand["buyer_signups"] * (1 + buyer_growth_rate) ** m
+        new_buyer_signups = base_buyer_signups * buyer_ramp_factor
 
         # Churn increases when market is thin
         churn_penalty = thick.get("churn_thickness_penalty", 0) * (1 - match_rate)
@@ -103,7 +134,7 @@ def project_monthly(config: dict) -> pd.DataFrame:
 
         active_queriers = new_buyer_signups * demand["buyer_to_query_conversion"]
         total_queries = active_queriers * demand["queries_per_active_buyer"]
-        bounties = demand["bounties_posted"] * (1 + buyer_growth_rate) ** m
+        bounties = demand["bounties_posted"] * (1 + buyer_growth_rate) ** m * buyer_ramp_factor
 
         # --- Phase 3: Transactions ---
         retained_buyers = cumulative_buyers
@@ -127,8 +158,19 @@ def project_monthly(config: dict) -> pd.DataFrame:
         cumulative_verified_outcomes += resolved
         reliability_score = min(1.0, 0.5 + trust["reliability_score_improvement_mom"] * m)
 
+        # Determine phase label
+        if in_seller_frontload:
+            phase = "SEED"
+        elif not buyer_launched:
+            phase = "WAIT"
+        elif buyer_ramp_factor < 1.0:
+            phase = f"RAMP({buyer_ramp_factor:.0%})"
+        else:
+            phase = "LIVE"
+
         rows.append({
             "month": month_label,
+            "phase": phase,
             # Supply
             "new_sellers": round(new_sellers),
             "sellers": round(sellers),
@@ -243,6 +285,14 @@ def sensitivity_analysis(config: dict) -> pd.DataFrame:
             ("thickness", "price_acceptance_rate", "Price acceptance rate"),
         ])
 
+    # Add launch params if present
+    if "launch" in config["assumptions"]:
+        test_params.extend([
+            ("launch", "seller_only_months", "Seller-only months"),
+            ("launch", "buyer_ramp_months", "Buyer ramp months"),
+            ("launch", "seller_frontload_multiplier", "Seller frontload mult"),
+        ])
+
     results = []
     for section, key, label in test_params:
         import copy
@@ -330,7 +380,7 @@ def main():
 
     # Key columns for display
     display_cols = [
-        "month", "new_sellers", "sellers", "total_listings",
+        "month", "phase", "new_sellers", "sellers", "total_listings",
         "supply_density", "match_rate",
         "new_buyer_signups", "active_buyers", "effective_churn",
         "monthly_transactions", "gmv", "net_revenue", "arr",

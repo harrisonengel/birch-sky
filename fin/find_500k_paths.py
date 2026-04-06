@@ -29,19 +29,19 @@ def load_base():
 def run_grid():
     base = load_base()
 
-    # Grid: monthly onboarding rates (starting from 0) + other levers.
+    # Grid: monthly onboarding rates (starting from 0) + launch strategy.
     # These are month-1 rates that grow at supply_growth_rate_mom.
     grid = {
-        "sellers_onboarded": [10, 20, 30, 50],
-        "listings_per_seller": [4, 6, 8],
+        "sellers_onboarded": [20, 30, 50],
+        "listings_per_seller": [4, 6],
         "supply_growth_rate_mom": [0.10, 0.15, 0.20],
-        "buyer_signups": [30, 50, 100, 150],
+        "buyer_signups": [30, 50, 100],
         "activation_rate": [0.30, 0.40],
         "purchases_per_buyer_per_month": [2, 3],
         "average_transaction_value": [500, 750, 1000],
-        "buyer_churn_monthly": [0.04, 0.06, 0.08],
-        "take_rate": [0.15, 0.18],
-        "density_halflife": [60, 80],
+        "buyer_churn_monthly": [0.06, 0.08, 0.10],
+        "seller_only_months": [2, 3, 4, 6],
+        "seller_frontload_multiplier": [1.0, 1.5, 2.0],
     }
 
     keys = list(grid.keys())
@@ -63,14 +63,27 @@ def run_grid():
         a["transactions"]["purchases_per_buyer_per_month"] = params["purchases_per_buyer_per_month"]
         a["transactions"]["average_transaction_value"] = params["average_transaction_value"]
         a["liquidity"]["buyer_churn_monthly"] = params["buyer_churn_monthly"]
-        a["transactions"]["take_rate"] = params["take_rate"]
-        a["thickness"]["density_halflife"] = params["density_halflife"]
+        if "launch" not in a:
+            a["launch"] = {}
+        a["launch"]["seller_only_months"] = params["seller_only_months"]
+        a["launch"]["seller_frontload_multiplier"] = params["seller_frontload_multiplier"]
 
         df = project_monthly(cfg)
         month1_arr = df.iloc[0]["arr"]
         month1_match = df.iloc[0]["match_rate"]
         aug_arr = df.iloc[-1]["arr"]
         aug_match = df.iloc[-1]["match_rate"]
+
+        # Find match rate when buyers launch (first non-SEED/WAIT phase)
+        launch_match = 0.0
+        launch_sellers = 0
+        launch_month_label = "Never"
+        for _, row in df.iterrows():
+            if row["phase"] not in ("SEED", "WAIT") and row["new_buyer_signups"] > 0:
+                launch_match = row["match_rate"]
+                launch_sellers = row["sellers"]
+                launch_month_label = row["month"]
+                break
 
         # Find when $500K is first hit
         hit_month = None
@@ -82,7 +95,9 @@ def run_grid():
         results.append({
             **params,
             "month1_arr": month1_arr,
-            "month1_match": month1_match,
+            "launch_match": launch_match,
+            "launch_sellers": launch_sellers,
+            "launch_month": launch_month_label,
             "aug2027_arr": aug_arr,
             "aug_match": aug_match,
             "hit_500k": hit_month or "Never",
@@ -107,11 +122,9 @@ def run_grid():
         "supply_growth_rate_mom": 0.15,
         "buyer_signups": 200, "activation_rate": 0.30,
         "purchases_per_buyer_per_month": 2, "average_transaction_value": 500,
-        "buyer_churn_monthly": 0.10, "take_rate": 0.15,
-        "density_halflife": 80,
+        "buyer_churn_monthly": 0.10,
+        "seller_only_months": 3, "seller_frontload_multiplier": 1.5,
     }
-    # Note: grid values below baseline (e.g. 10 sellers/mo vs 50)
-    # still count as changes
     def count_changes(row):
         return sum(1 for k, v in baseline.items() if row[k] != v)
 
@@ -145,10 +158,11 @@ def run_grid():
     display["gap_to_500k_fmt"] = display["gap_to_500k"].apply(format_currency)
 
     show_cols = ["sellers_onboarded", "listings_per_seller", "supply_growth_rate_mom",
+                 "seller_only_months", "seller_frontload_multiplier",
                  "buyer_signups", "activation_rate", "purchases_per_buyer_per_month",
-                 "average_transaction_value", "buyer_churn_monthly", "take_rate",
-                 "density_halflife", "month1_match", "aug_match",
-                 "month1_arr_fmt", "aug2027_arr_fmt", "hit_500k", "num_changes"]
+                 "average_transaction_value", "buyer_churn_monthly",
+                 "launch_month", "launch_sellers",
+                 "aug2027_arr_fmt", "hit_500k", "num_changes"]
     print(display[show_cols].to_string(index=False))
 
     # Detailed projections for top 3
@@ -168,8 +182,10 @@ def run_grid():
         a["transactions"]["purchases_per_buyer_per_month"] = row["purchases_per_buyer_per_month"]
         a["transactions"]["average_transaction_value"] = row["average_transaction_value"]
         a["liquidity"]["buyer_churn_monthly"] = row["buyer_churn_monthly"]
-        a["transactions"]["take_rate"] = row["take_rate"]
-        a["thickness"]["density_halflife"] = row["density_halflife"]
+        if "launch" not in a:
+            a["launch"] = {}
+        a["launch"]["seller_only_months"] = row["seller_only_months"]
+        a["launch"]["seller_frontload_multiplier"] = row["seller_frontload_multiplier"]
 
         df = project_monthly(cfg)
 
@@ -179,12 +195,13 @@ def run_grid():
                 changes.append(f"  {k}: {v} → {row[k]}")
 
         print(f"\n--- Path {i+1}: {int(row['num_changes'])} assumption changes ---")
+        print(f"    Buyers launch: {row['launch_month']} (match_rate={row['launch_match']:.1%}, {int(row['launch_sellers'])} sellers)")
         for c in changes:
             print(c)
         print()
 
-        cols = ["month", "sellers", "total_listings", "supply_density", "match_rate",
-                "buyer_signups", "active_buyers",
+        cols = ["month", "phase", "new_sellers", "sellers", "total_listings",
+                "match_rate", "new_buyer_signups", "active_buyers",
                 "monthly_transactions", "gmv", "net_revenue", "arr"]
         disp = df[cols].copy()
         disp["gmv"] = disp["gmv"].apply(format_currency)
