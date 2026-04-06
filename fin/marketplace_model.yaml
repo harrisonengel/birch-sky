@@ -1,0 +1,94 @@
+# IE Marketplace Financial Model
+# ================================
+# Config-driven model with three sections:
+#   assumptions  — editable inputs (change these)
+#   derived      — formulas computed from assumptions
+#   targets      — milestone gates with dates
+#
+# Run: python fin/run_model.py [--scenario fin/marketplace_model.yaml]
+
+model_name: "IE Marketplace ARR Model"
+version: "0.1.0"
+date: "2026-04-06"
+
+# ─── ASSUMPTIONS (editable inputs) ────────────────────────────────────────────
+
+assumptions:
+
+  # Phase 1: Supply
+  supply:
+    sellers_onboarded: 50            # total sellers at end of period
+    listings_per_seller: 4           # avg listings per seller
+    listing_category_count: 8        # distinct verticals covered
+    pct_listings_complete_metadata: 0.70  # % with full metadata
+    supply_growth_rate_mom: 0.15     # MoM growth rate
+    time_to_first_listing_days: 7    # avg days from signup to first listing
+
+  # Phase 2: Demand
+  demand:
+    buyer_signups: 200               # total buyer accounts created
+    buyer_to_query_conversion: 0.60  # % of signups that actually search
+    queries_per_active_buyer: 5      # avg queries per active buyer
+    bounties_posted: 30              # total bounties posted
+    query_fulfillment_rate: 0.40     # % of queries returning usable result
+    bounty_fulfillment_rate: 0.25    # % of bounties picked up by sellers
+
+  # Phase 3: Transactions
+  transactions:
+    activation_rate: 0.30            # % of signups that become paying buyers
+    purchases_per_buyer_per_month: 2 # avg monthly purchases per active buyer
+    average_transaction_value: 500   # ATV in USD
+    take_rate: 0.15                  # platform commission (%)
+    transaction_growth_rate_mom: 0.20  # MoM transaction growth
+
+  # Phase 4: Liquidity & retention
+  liquidity:
+    buyer_to_seller_ratio: 4.0       # target ratio
+    listing_liquidity_pct: 0.25      # % of listings that transact per period
+    buyer_purchase_within_90d: 0.35  # % of buyers who buy within 90 days
+    repeat_purchase_rate: 0.40       # % of buyers who buy again
+    seller_churn_monthly: 0.05       # monthly seller churn
+    buyer_churn_monthly: 0.10        # monthly buyer churn after first purchase
+    gmv_pct_from_repeat: 0.30       # % of GMV from repeat buyers
+
+  # Phase 5: Trust layer
+  trust:
+    dispute_rate: 0.05               # % of transactions disputed
+    dispute_resolution_rate: 0.90    # % of disputes resolved
+    dispute_resolution_days: 3       # avg days to resolve
+    verified_outcome_count: 0        # starting verified outcomes (grows)
+    reliability_score_improvement_mom: 0.02  # monthly score improvement
+
+  # Time horizon
+  time:
+    months: 12                       # projection period in months
+    start_month: "2026-05"           # projection start
+
+
+# ─── TARGETS (milestone gates) ────────────────────────────────────────────────
+
+targets:
+  - name: "Seed supply"
+    metric: "total_listings"
+    value: 100
+    by: "2026-07"
+
+  - name: "First transactions"
+    metric: "monthly_transactions"
+    value: 50
+    by: "2026-08"
+
+  - name: "Liquidity threshold"
+    metric: "listing_liquidity_pct"
+    value: 0.20
+    by: "2026-10"
+
+  - name: "ARR $500K"
+    metric: "arr"
+    value: 500000
+    by: "2027-04"
+
+  - name: "ARR $1M"
+    metric: "arr"
+    value: 1000000
+    by: "2027-10"
