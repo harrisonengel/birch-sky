@@ -1,6 +1,6 @@
 SERVICE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
-.PHONY: docker-up-infra docker-down run build migrate seed test
+.PHONY: docker-up-infra docker-down run build migrate test
 
 docker-up-infra:
 	cd $(SERVICE_DIR) && docker compose up -d
@@ -16,9 +16,6 @@ build:
 
 migrate:
 	cd $(SERVICE_DIR) && go run ./cmd/server migrate
-
-seed:
-	cd $(SERVICE_DIR) && go run ./cmd/seed
 
 test:
 	cd $(SERVICE_DIR) && go test ./... -v -count=1

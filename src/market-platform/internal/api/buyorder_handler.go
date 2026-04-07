@@ -13,25 +13,20 @@ type BuyOrderHandler struct {
 	svc *service.BuyOrderService
 }
 
+// Create handles POST /api/v1/buy-orders.
+//
+// NOTE: The buyer_id in the request body is trusted on faith today. A
+// real auth flow (OAuth or similar) that ties the request to an
+// authenticated buyer identity is required before MVP; see the follow-up
+// GitHub issue on buyer authentication.
 func (h *BuyOrderHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		BuyerID       string `json:"buyer_id"`
-		Query         string `json:"query"`
-		Criteria      string `json:"criteria"`
-		MaxPriceCents int    `json:"max_price_cents"`
-		Currency      string `json:"currency"`
-		Category      string `json:"category"`
-	}
+	var req CreateBuyOrderRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if req.BuyerID == "" || req.Query == "" {
-		respondError(w, http.StatusBadRequest, "buyer_id and query are required")
-		return
-	}
-	if req.MaxPriceCents <= 0 {
-		respondError(w, http.StatusBadRequest, "max_price_cents must be positive")
+	if err := req.Validate(); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -49,16 +44,17 @@ func (h *BuyOrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusCreated, created)
+	respondJSON(w, http.StatusCreated, CreateBuyOrderResponse(*created))
 }
 
 func (h *BuyOrderHandler) List(w http.ResponseWriter, r *http.Request) {
+	req := parseListBuyOrdersRequest(r)
 	filter := domain.BuyOrderFilter{
-		BuyerID:  queryString(r, "buyer_id"),
-		Status:   queryString(r, "status"),
-		Category: queryString(r, "category"),
-		Limit:    queryInt(r, "limit", 20),
-		Offset:   queryInt(r, "offset", 0),
+		BuyerID:  req.BuyerID,
+		Status:   req.Status,
+		Category: req.Category,
+		Limit:    req.Limit,
+		Offset:   req.Offset,
 	}
 
 	orders, total, err := h.svc.List(r.Context(), filter)
@@ -66,7 +62,7 @@ func (h *BuyOrderHandler) List(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusOK, PaginatedResponse{
+	respondJSON(w, http.StatusOK, ListBuyOrdersResponse{
 		Data:   orders,
 		Total:  total,
 		Limit:  filter.Limit,
@@ -85,20 +81,18 @@ func (h *BuyOrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, "buy order not found")
 		return
 	}
-	respondJSON(w, http.StatusOK, order)
+	respondJSON(w, http.StatusOK, GetBuyOrderResponse(*order))
 }
 
 func (h *BuyOrderHandler) Fill(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	var req struct {
-		ListingID string `json:"listing_id"`
-	}
+	var req FillBuyOrderRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if req.ListingID == "" {
-		respondError(w, http.StatusBadRequest, "listing_id is required")
+	if err := req.Validate(); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -116,7 +110,7 @@ func (h *BuyOrderHandler) Fill(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, msg)
 		return
 	}
-	respondJSON(w, http.StatusOK, order)
+	respondJSON(w, http.StatusOK, FillBuyOrderResponse(*order))
 }
 
 func (h *BuyOrderHandler) Cancel(w http.ResponseWriter, r *http.Request) {

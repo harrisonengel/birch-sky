@@ -76,7 +76,14 @@ func createListingDirect(t *testing.T, sellerID, title, description, category st
 	indexer := search.NewIndexer(sharedEngine, embedder)
 	svc := service.NewListingService(listingRepo, sellerRepo, sharedObjStore, indexer)
 
-	listing, err := svc.CreateListing(context.Background(), sellerID, title, description, category, priceCents, "usd", nil)
+	listing, err := svc.CreateListing(context.Background(), service.CreateListingInput{
+		SellerID:    sellerID,
+		Title:       title,
+		Description: description,
+		Category:    category,
+		PriceCents:  priceCents,
+		Currency:    "usd",
+	})
 	if err != nil {
 		t.Fatalf("create listing %q: %v", title, err)
 	}

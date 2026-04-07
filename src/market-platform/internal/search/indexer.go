@@ -64,11 +64,22 @@ func extractContent(reader io.Reader, format string) (string, error) {
 	}
 }
 
+// csvExtractMaxLines is the upper bound on how many CSV rows we feed into
+// the search index per listing. The number is intentionally very large:
+// search relevance is the product, and a CSV's actual contents are the
+// strongest signal about what a buyer agent is buying. We start at 100k
+// and will tune up or down based on real index size and query relevance
+// data once that's available.
+const csvExtractMaxLines = 100_000
+
 func extractCSV(reader io.Reader) (string, error) {
 	scanner := bufio.NewScanner(reader)
+	// Default bufio.Scanner buffer is 64KB per token; bump it so wide CSV
+	// rows don't get truncated mid-line.
+	scanner.Buffer(make([]byte, 1024*1024), 8*1024*1024)
 	var lines []string
 	lineCount := 0
-	for scanner.Scan() && lineCount <= 50 {
+	for scanner.Scan() && lineCount < csvExtractMaxLines {
 		lines = append(lines, scanner.Text())
 		lineCount++
 	}

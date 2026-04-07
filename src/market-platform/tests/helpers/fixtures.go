@@ -57,7 +57,7 @@ func CreateTestBuyOrder(t *testing.T, repo *postgres.BuyOrderRepo, buyerID, quer
 	bo, err := repo.Create(context.Background(), &domain.BuyOrder{
 		BuyerID:       buyerID,
 		Query:         query,
-		Criteria:      "{}",
+		Criteria:      domain.BuyOrderCriteria{},
 		MaxPriceCents: maxPriceCents,
 		Currency:      "usd",
 		Category:      category,

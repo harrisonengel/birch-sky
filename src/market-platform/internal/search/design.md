@@ -24,6 +24,24 @@ Buyer agent search quality is the core product. We use hybrid text + vector sear
 - `LocalEmbedder`: deterministic hash-based pseudo-embeddings for dev/test
 
 ### Content Extraction
-- CSV: headers + first 50 rows
-- JSON: key paths + sample values (depth-limited)
-- Plain text: full content, truncated at 50KB
+
+The whole point of indexing data is so a buyer agent can find listings by
+what's *inside* them, not just by metadata. We err on the side of
+extracting too much rather than too little — search relevance is the
+product, and storage / write-path latency are the right things to spend
+to get it.
+
+- **CSV**: up to `csvExtractMaxLines` (currently **100,000**) rows fed
+  into the index per listing. The bufio.Scanner buffer is bumped to 8MiB
+  per token so wide rows aren't truncated mid-line. We will tune this
+  number up or down based on real index size and offline relevance
+  measurements once those are in place.
+- **JSON**: key paths + sample string values (depth-limited).
+- **Plain text**: full content, truncated at 50KB.
+
+## Open Follow-Ups
+
+- **Ranking & Relevance Pipeline** — capture every search request and the
+  results returned alongside a session ID, then expose `Search()` and
+  `Judgement()` APIs to buyer agents so we can build offline ranking
+  models from real outcomes. Tracked as a follow-up issue.

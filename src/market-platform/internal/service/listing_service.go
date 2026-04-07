@@ -43,9 +43,20 @@ func (s *ListingService) GetSeller(ctx context.Context, id string) (*domain.Sell
 	return s.sellerRepo.GetByID(ctx, id)
 }
 
-func (s *ListingService) CreateListing(ctx context.Context, sellerID, title, description, category string, priceCents int, currency string, tags json.RawMessage) (*domain.Listing, error) {
+// CreateListingInput is the structured input for CreateListing.
+type CreateListingInput struct {
+	SellerID    string
+	Title       string
+	Description string
+	Category    string
+	PriceCents  int
+	Currency    string
+	Tags        json.RawMessage
+}
+
+func (s *ListingService) CreateListing(ctx context.Context, in CreateListingInput) (*domain.Listing, error) {
 	// Validate seller exists
-	seller, err := s.sellerRepo.GetByID(ctx, sellerID)
+	seller, err := s.sellerRepo.GetByID(ctx, in.SellerID)
 	if err != nil {
 		return nil, err
 	}
@@ -53,19 +64,21 @@ func (s *ListingService) CreateListing(ctx context.Context, sellerID, title, des
 		return nil, fmt.Errorf("seller not found")
 	}
 
+	tags := in.Tags
 	if tags == nil {
 		tags = json.RawMessage("[]")
 	}
+	currency := in.Currency
 	if currency == "" {
 		currency = "usd"
 	}
 
 	listing := &domain.Listing{
-		SellerID:    sellerID,
-		Title:       title,
-		Description: description,
-		Category:    category,
-		PriceCents:  priceCents,
+		SellerID:    in.SellerID,
+		Title:       in.Title,
+		Description: in.Description,
+		Category:    in.Category,
+		PriceCents:  in.PriceCents,
 		Currency:    currency,
 		Tags:        tags,
 		Status:      domain.ListingStatusActive,
@@ -93,7 +106,7 @@ func (s *ListingService) ListListings(ctx context.Context, filter domain.Listing
 	return s.listingRepo.List(ctx, filter)
 }
 
-func (s *ListingService) UpdateListing(ctx context.Context, id string, updates map[string]interface{}) (*domain.Listing, error) {
+func (s *ListingService) UpdateListing(ctx context.Context, id string, updates domain.ListingUpdate) (*domain.Listing, error) {
 	updated, err := s.listingRepo.Update(ctx, id, updates)
 	if err != nil {
 		return nil, err

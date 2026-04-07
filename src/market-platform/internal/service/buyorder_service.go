@@ -27,9 +27,6 @@ func (s *BuyOrderService) Create(ctx context.Context, bo *domain.BuyOrder) (*dom
 	if bo.Currency == "" {
 		bo.Currency = "usd"
 	}
-	if bo.Criteria == "" {
-		bo.Criteria = "{}"
-	}
 	return s.buyOrderRepo.Create(ctx, bo)
 }
 

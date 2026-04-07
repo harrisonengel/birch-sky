@@ -102,25 +102,41 @@ func (r *ListingRepo) List(ctx context.Context, f domain.ListingFilter) ([]domai
 	return listings, total, nil
 }
 
-func (r *ListingRepo) Update(ctx context.Context, id string, updates map[string]interface{}) (*domain.Listing, error) {
+func (r *ListingRepo) Update(ctx context.Context, id string, updates domain.ListingUpdate) (*domain.Listing, error) {
 	sets := []string{}
 	args := []interface{}{}
 	argIdx := 1
 
-	allowed := map[string]bool{"title": true, "description": true, "category": true, "price_cents": true, "tags": true, "status": true}
-	for k, v := range updates {
-		if !allowed[k] {
-			continue
-		}
-		sets = append(sets, fmt.Sprintf("%s = $%d", k, argIdx))
-		args = append(args, v)
+	addSet := func(col string, val interface{}) {
+		sets = append(sets, fmt.Sprintf("%s = $%d", col, argIdx))
+		args = append(args, val)
 		argIdx++
 	}
+
+	if updates.Title != nil {
+		addSet("title", *updates.Title)
+	}
+	if updates.Description != nil {
+		addSet("description", *updates.Description)
+	}
+	if updates.Category != nil {
+		addSet("category", *updates.Category)
+	}
+	if updates.PriceCents != nil {
+		addSet("price_cents", *updates.PriceCents)
+	}
+	if updates.Tags != nil {
+		addSet("tags", *updates.Tags)
+	}
+	if updates.Status != nil {
+		addSet("status", *updates.Status)
+	}
+
 	if len(sets) == 0 {
 		return r.GetByID(ctx, id)
 	}
 
-	sets = append(sets, fmt.Sprintf("updated_at = now()"))
+	sets = append(sets, "updated_at = now()")
 	query := fmt.Sprintf(
 		`UPDATE listings SET %s WHERE id = $%d AND status != 'deleted'
 		 RETURNING id, seller_id, title, description, category, price_cents, currency, data_ref, data_format, data_size_bytes, tags, status, created_at, updated_at`,

@@ -1,3 +1,23 @@
+// Command server runs the market-platform service.
+//
+// It is the single binary for the marketplace backend. It exposes two
+// network surfaces:
+//
+//   - HTTP API on cfg.HTTPPort (default :8080) — REST endpoints for
+//     sellers, listings, search, purchases, and buy orders. This is what
+//     human-facing tools, internal services, and CLI tooling call.
+//   - MCP server on cfg.MCPPort (default :8081) — Model Context Protocol
+//     SSE transport that exposes search/get/analyze tools to buyer agents
+//     running inside the agent sandbox.
+//
+// On startup the binary connects to Postgres and runs any pending embedded
+// migrations, then wires up the object store, search engine, embedder,
+// payment processor, services, and HTTP routes via constructor injection.
+// All credentials and connection strings come from the environment via
+// internal/config; see .env.example for the full list.
+//
+// Shutdown is triggered by SIGINT or SIGTERM and gives in-flight HTTP
+// requests up to 10 seconds to drain before the process exits.
 package main
 
 import (
@@ -28,7 +48,14 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	// Database
+	// Database. Credentials, host, and database name are all carried in
+	// cfg.DatabaseURL (a libpq-format connection string loaded from the
+	// DATABASE_URL env var, e.g.
+	// "postgres://user:password@host:5432/dbname?sslmode=require"). Connect
+	// does not bypass auth — Postgres rejects the connection if the URL
+	// lacks valid credentials. The local docker-compose ships a development
+	// password for convenience; production deployments must inject real
+	// secrets via env (see follow-up issue on env var deployment strategy).
 	db, err := postgres.Connect(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("database: %v", err)
@@ -40,7 +67,11 @@ func main() {
 	}
 	log.Println("migrations complete")
 
-	// Repos
+	// Repositories. These are Go data-access objects (the "repository"
+	// pattern), not git repos or new database schemas — each one is a thin
+	// struct that holds a reference to the shared *sqlx.DB and exposes
+	// typed CRUD methods over an existing table created by the migrations
+	// above. No new persistent state is created here.
 	sellerRepo := postgres.NewSellerRepo(db)
 	listingRepo := postgres.NewListingRepo(db)
 	transactionRepo := postgres.NewTransactionRepo(db)

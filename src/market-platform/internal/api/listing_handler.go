@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -14,16 +13,13 @@ type SellerHandler struct {
 }
 
 func (h *SellerHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name  string `json:"name"`
-		Email string `json:"email"`
-	}
+	var req CreateSellerRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if req.Name == "" || req.Email == "" {
-		respondError(w, http.StatusBadRequest, "name and email are required")
+	if err := req.Validate(); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -36,7 +32,7 @@ func (h *SellerHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusCreated, seller)
+	respondJSON(w, http.StatusCreated, CreateSellerResponse(*seller))
 }
 
 func (h *SellerHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +46,7 @@ func (h *SellerHandler) Get(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, "seller not found")
 		return
 	}
-	respondJSON(w, http.StatusOK, seller)
+	respondJSON(w, http.StatusOK, GetSellerResponse(*seller))
 }
 
 type ListingHandler struct {
@@ -58,37 +54,25 @@ type ListingHandler struct {
 }
 
 func (h *ListingHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		SellerID    string          `json:"seller_id"`
-		Title       string          `json:"title"`
-		Description string          `json:"description"`
-		Category    string          `json:"category"`
-		PriceCents  int             `json:"price_cents"`
-		Currency    string          `json:"currency"`
-		Tags        json.RawMessage `json:"tags"`
-	}
+	var req CreateListingRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if req.SellerID == "" {
-		respondError(w, http.StatusBadRequest, "seller_id is required")
-		return
-	}
-	if req.Title == "" {
-		respondError(w, http.StatusBadRequest, "title is required")
-		return
-	}
-	if req.Description == "" {
-		respondError(w, http.StatusBadRequest, "description is required")
-		return
-	}
-	if req.PriceCents < 0 {
-		respondError(w, http.StatusBadRequest, "price_cents must be non-negative")
+	if err := req.Validate(); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	listing, err := h.svc.CreateListing(r.Context(), req.SellerID, req.Title, req.Description, req.Category, req.PriceCents, req.Currency, req.Tags)
+	listing, err := h.svc.CreateListing(r.Context(), service.CreateListingInput{
+		SellerID:    req.SellerID,
+		Title:       req.Title,
+		Description: req.Description,
+		Category:    req.Category,
+		PriceCents:  req.PriceCents,
+		Currency:    req.Currency,
+		Tags:        req.Tags,
+	})
 	if err != nil {
 		if err.Error() == "seller not found" {
 			respondError(w, http.StatusBadRequest, "seller not found")
@@ -97,7 +81,7 @@ func (h *ListingHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusCreated, listing)
+	respondJSON(w, http.StatusCreated, CreateListingResponse(*listing))
 }
 
 func (h *ListingHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -111,16 +95,17 @@ func (h *ListingHandler) Get(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, "listing not found")
 		return
 	}
-	respondJSON(w, http.StatusOK, listing)
+	respondJSON(w, http.StatusOK, GetListingResponse(*listing))
 }
 
 func (h *ListingHandler) List(w http.ResponseWriter, r *http.Request) {
+	req := parseListListingsRequest(r)
 	filter := domain.ListingFilter{
-		SellerID: queryString(r, "seller_id"),
-		Status:   queryString(r, "status"),
-		Category: queryString(r, "category"),
-		Limit:    queryInt(r, "limit", 20),
-		Offset:   queryInt(r, "offset", 0),
+		SellerID: req.SellerID,
+		Status:   req.Status,
+		Category: req.Category,
+		Limit:    req.Limit,
+		Offset:   req.Offset,
 	}
 
 	listings, total, err := h.svc.ListListings(r.Context(), filter)
@@ -128,7 +113,7 @@ func (h *ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusOK, PaginatedResponse{
+	respondJSON(w, http.StatusOK, ListListingsResponse{
 		Data:   listings,
 		Total:  total,
 		Limit:  filter.Limit,
@@ -138,13 +123,13 @@ func (h *ListingHandler) List(w http.ResponseWriter, r *http.Request) {
 
 func (h *ListingHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	var updates map[string]interface{}
-	if err := decodeJSON(r, &updates); err != nil {
+	var req UpdateListingRequest
+	if err := decodeJSON(r, &req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 
-	listing, err := h.svc.UpdateListing(r.Context(), id, updates)
+	listing, err := h.svc.UpdateListing(r.Context(), id, req)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -153,7 +138,7 @@ func (h *ListingHandler) Update(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, "listing not found")
 		return
 	}
-	respondJSON(w, http.StatusOK, listing)
+	respondJSON(w, http.StatusOK, UpdateListingResponse(*listing))
 }
 
 func (h *ListingHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -191,5 +176,5 @@ func (h *ListingHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]string{"status": "uploaded"})
+	respondJSON(w, http.StatusOK, UploadListingResponse{Status: "uploaded"})
 }

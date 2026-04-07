@@ -11,13 +11,13 @@ type SearchHandler struct {
 }
 
 func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
-	var req service.SearchRequest
+	var req SearchRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if req.Query == "" {
-		respondError(w, http.StatusBadRequest, "query is required")
+	if err := validateSearchRequest(&req); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -26,5 +26,5 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusOK, resp)
+	respondJSON(w, http.StatusOK, SearchResponse(*resp))
 }

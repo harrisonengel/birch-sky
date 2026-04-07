@@ -56,7 +56,7 @@ CREATE TABLE buy_orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     buyer_id TEXT NOT NULL,
     query TEXT NOT NULL,
-    criteria TEXT NOT NULL DEFAULT '{}',
+    criteria JSONB NOT NULL DEFAULT '{}',
     max_price_cents INTEGER NOT NULL,
     currency TEXT NOT NULL DEFAULT 'usd',
     category TEXT NOT NULL DEFAULT '',

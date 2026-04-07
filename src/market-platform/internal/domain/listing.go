@@ -44,3 +44,15 @@ type ListingFilter struct {
 	Limit    int
 	Offset   int
 }
+
+// ListingUpdate carries an editable subset of Listing fields. Pointer
+// fields distinguish "not provided" from "set to zero value", which is
+// what callers need when patching a record.
+type ListingUpdate struct {
+	Title       *string          `json:"title,omitempty"`
+	Description *string          `json:"description,omitempty"`
+	Category    *string          `json:"category,omitempty"`
+	PriceCents  *int             `json:"price_cents,omitempty"`
+	Tags        *json.RawMessage `json:"tags,omitempty"`
+	Status      *ListingStatus   `json:"status,omitempty"`
+}
