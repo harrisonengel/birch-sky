@@ -44,6 +44,10 @@ The project uses Vitest (unit) + Playwright (E2E). Both are required CI gates.
 
 ### Before submitting any PR
 
+The JS test suites (`npm test`, `npm run test:e2e`) are only required when your PR changes the **application stack** — i.e. anything under `src/`, `index.html`, `vite.config.js`, `vitest.config.js`, `playwright.config.js`, `e2e/`, or `package.json`/`package-lock.json`. PRs that only touch peripheral code (e.g. `orchestrator/`, `scripts/`, `docs/`, `specs/`, `.claude/`, CLI tools under `arch/` or `fin/`) do not need to run the JS suites.
+
+When your PR touches the application stack:
+
 1. Run `npm test` — resolve all failures before proceeding.
 2. Run `npm run test:e2e` — resolve all failures before proceeding.
 3. If you introduced new UI functionality, add a corresponding Playwright test in `e2e/flows/`.

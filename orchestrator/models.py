@@ -39,3 +39,4 @@ class Task:
     linear_issue_id: Optional[str] = None
     linear_url: Optional[str] = None
     session_id: Optional[str] = None
+    identity: Optional[str] = None
