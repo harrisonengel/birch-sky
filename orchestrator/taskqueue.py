@@ -35,13 +35,16 @@ def add(task: Task):
     save(tasks)
 
 
-def get_next_ready() -> Optional[Task]:
+def get_next_ready(identity: Optional[str] = None) -> Optional[Task]:
     tasks = load()
     done_ids = {t.id for t in tasks if t.status == Status.DONE}
     for t in tasks:
-        if t.status == Status.READY:
-            if all(dep in done_ids for dep in t.dependencies):
-                return t
+        if t.status != Status.READY:
+            continue
+        if identity is not None and t.identity != identity:
+            continue
+        if all(dep in done_ids for dep in t.dependencies):
+            return t
     return None
 
 
@@ -58,5 +61,10 @@ def update(task_id: str, **kwargs):
     save(tasks)
 
 
-def pending_proposals() -> list[Task]:
-    return [t for t in load() if t.status == Status.PENDING]
+def pending_proposals(identity: Optional[str] = None) -> list[Task]:
+    return [
+        t
+        for t in load()
+        if t.status == Status.PENDING
+        and (identity is None or t.identity == identity)
+    ]

@@ -141,10 +141,11 @@ def update_issue_status(issue_id: str, state_name: str) -> bool:
 
 
 _GET_TODO_ISSUES = """
-query($teamId: String!) {
+query($teamId: String!, $label: String!) {
   issues(filter: {
     team: { id: { eq: $teamId } },
-    state: { name: { eq: "Todo" } }
+    state: { name: { eq: "Todo" } },
+    labels: { name: { eq: $label } }
   }) {
     nodes { id identifier title description }
   }
@@ -152,12 +153,18 @@ query($teamId: String!) {
 """
 
 
-def fetch_todo_issues() -> list[dict]:
-    """Pull issues currently in the Todo column. Returns [] if Linear disabled."""
+def fetch_todo_issues(identity: str) -> list[dict]:
+    """Pull Todo issues labeled `agent:<identity>`. Returns [] if Linear disabled."""
     if not _enabled():
         return []
     try:
-        data = _gql(_GET_TODO_ISSUES, {"teamId": os.environ["LINEAR_TEAM_ID"]})
+        data = _gql(
+            _GET_TODO_ISSUES,
+            {
+                "teamId": os.environ["LINEAR_TEAM_ID"],
+                "label": f"agent:{identity}",
+            },
+        )
         return data["data"]["issues"]["nodes"]
     except Exception as e:
         print(f"  Linear fetch_todo_issues failed: {e}", file=sys.stderr)

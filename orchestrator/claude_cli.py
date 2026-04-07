@@ -20,8 +20,15 @@ def build_prompt(task: Task, dep_output_paths: list[str]) -> str:
     """Build the user prompt for a fresh task run.
 
     CLAUDE.md is auto-loaded by Claude Code; we only add task-specific framing.
+    If the task has an identity, we instruct Claude to invoke that skill first.
     """
-    parts = [f"# Task: {task.goal}"]
+    parts = []
+    if task.identity:
+        parts.append(
+            f"Use the `{task.identity}` skill for this task. All subsequent "
+            f"work should follow that persona's priorities and thinking style.\n"
+        )
+    parts.append(f"# Task: {task.goal}")
 
     if task.acceptance_criteria:
         parts.append(f"\n## Acceptance criteria\n{task.acceptance_criteria}")

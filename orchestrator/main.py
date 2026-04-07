@@ -5,6 +5,8 @@ for tool permissions. Python owns: queue, review gates, Linear sync, feedback lo
 """
 
 import argparse
+import os
+import sys
 import time
 
 from . import claude_cli
@@ -15,6 +17,25 @@ from .review import review_gate
 
 ALWAYS_GATE = {TaskType.SPEC, TaskType.DECIDE}
 MAX_FEEDBACK_ITERATIONS = 5
+SKILLS_DIR = ".claude/skills"
+
+
+def _validate_identity(identity: str) -> None:
+    """Fail fast if `.claude/skills/<identity>/SKILL.md` is missing."""
+    skill_path = os.path.join(SKILLS_DIR, identity, "SKILL.md")
+    if not os.path.isfile(skill_path):
+        print(
+            f"Unknown identity '{identity}': {skill_path} not found.",
+            file=sys.stderr,
+        )
+        available = []
+        if os.path.isdir(SKILLS_DIR):
+            for name in sorted(os.listdir(SKILLS_DIR)):
+                if os.path.isfile(os.path.join(SKILLS_DIR, name, "SKILL.md")):
+                    available.append(name)
+        if available:
+            print(f"Available identities: {', '.join(available)}", file=sys.stderr)
+        sys.exit(2)
 
 
 def _dep_output_paths(task: Task) -> list[str]:
@@ -26,7 +47,7 @@ def _dep_output_paths(task: Task) -> list[str]:
     ]
 
 
-def triage_proposals(result_text: str, parent_task: Task):
+def triage_proposals(result_text: str, parent_task: Task, identity: str):
     """Parse '## Proposed follow-ups' section from claude's final message and triage each."""
     proposals = _parse_proposals(result_text)
     if not proposals:
@@ -49,6 +70,7 @@ def triage_proposals(result_text: str, parent_task: Task):
             proposed_by=f"agent:{parent_task.id}",
             authorized_by="human",
             status=Status.READY,
+            identity=identity,
         )
         q.add(new_task)
         print(f"  Added: {new_task.id}")
@@ -82,9 +104,13 @@ def _parse_proposals(text: str) -> list[tuple[str, str]]:
     return proposals
 
 
-def pull_from_linear():
-    """Import any new Linear Todo issues that aren't yet in the queue."""
-    issues = linear.fetch_todo_issues()
+def pull_from_linear(identity: str):
+    """Import any new Linear Todo issues labeled `agent:<identity>`.
+
+    Imported tasks land as READY (not PENDING) — the Linear label *is* the
+    human authorization to run, so no second triage step is needed.
+    """
+    issues = linear.fetch_todo_issues(identity)
     if not issues:
         return
     existing = {t.linear_issue_id for t in q.load() if t.linear_issue_id}
@@ -96,11 +122,16 @@ def pull_from_linear():
             type=TaskType.IMPLEMENT,
             notes=issue.get("description") or "",
             linear_issue_id=issue["id"],
-            status=Status.PENDING,
+            status=Status.READY,
             proposed_by="linear",
+            authorized_by="linear-label",
+            identity=identity,
         )
         q.add(new_task)
-        print(f"Imported from Linear: [{issue['identifier']}] {issue['title']}")
+        print(
+            f"Imported from Linear [{identity}]: "
+            f"[{issue['identifier']}] {issue['title']}"
+        )
 
 
 def _execute_task(task: Task) -> dict:
@@ -158,13 +189,13 @@ def _run_review_loop(task: Task, result: dict) -> bool:
     return False
 
 
-def run_loop():
-    print("Orchestrator running. Ctrl+C to pause.")
+def run_loop(identity: str):
+    print(f"Orchestrator running as [{identity}]. Ctrl+C to pause.")
     while True:
-        pull_from_linear()
+        pull_from_linear(identity)
 
-        # Triage any pending proposals first
-        proposals = q.pending_proposals()
+        # Triage any pending proposals first (scoped to this identity)
+        proposals = q.pending_proposals(identity)
         if proposals:
             print(f"\n{len(proposals)} pending proposal(s) need triage.")
             for task in proposals:
@@ -184,7 +215,7 @@ def run_loop():
                             )
                             print(f"  Linear: {issue['url']}")
 
-        task = q.get_next_ready()
+        task = q.get_next_ready(identity)
         if task is None:
             print("No ready tasks. Waiting...")
             time.sleep(5)
@@ -204,7 +235,7 @@ def run_loop():
         if task.linear_issue_id:
             linear.update_issue_status(task.linear_issue_id, "Done")
 
-        triage_proposals(result.get("result", ""), task)
+        triage_proposals(result.get("result", ""), task, identity)
         print(f"Done: {task.id}")
 
 
@@ -223,13 +254,28 @@ def seed(goal: str, task_type: str = "spec"):
 def main():
     parser = argparse.ArgumentParser(description="Agent work orchestrator")
     parser.add_argument("--seed", metavar="GOAL", help="Seed a task and exit")
-    parser.add_argument("--type", default="spec", help="Task type for --seed (default: spec)")
+    parser.add_argument(
+        "--type", default="spec", help="Task type for --seed (default: spec)"
+    )
+    parser.add_argument(
+        "--identity",
+        metavar="NAME",
+        help=(
+            "Persona skill to run as (e.g. architect, programmer). "
+            "Required for the execution loop. The loop will only pull "
+            "Linear issues labeled `agent:<identity>`."
+        ),
+    )
     args = parser.parse_args()
 
     if args.seed:
         seed(args.seed, args.type)
-    else:
-        run_loop()
+        return
+
+    if not args.identity:
+        parser.error("--identity is required to run the execution loop")
+    _validate_identity(args.identity)
+    run_loop(args.identity)
 
 
 if __name__ == "__main__":
