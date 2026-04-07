@@ -20,3 +20,29 @@ This marketplace will form an indispensable backbone of the agent economy, and r
 - All plans must become specs checked in to `specs/` before implementation begins.
 - Name spec files descriptively (e.g. `mvp-auth-design.md`), not `README.md`.
 - Specs live under `specs/features/<feature-name>/` or `specs/<area>/` as appropriate.
+
+## Testing
+
+The project uses Vitest (unit) + Playwright (E2E). Both are required CI gates.
+
+### Before submitting any PR
+
+1. Run `npm test` — resolve all failures before proceeding.
+2. Run `npm run test:e2e` — resolve all failures before proceeding.
+3. If you introduced new UI functionality, add a corresponding Playwright test in `e2e/flows/`.
+4. Do not submit a PR with known test failures under any circumstance.
+
+### Test authoring guidelines
+
+- Vitest: co-locate test files next to the module as `<name>.test.js` under `src/`.
+- Playwright: place E2E tests in `e2e/flows/` named after the user journey.
+- Test behavior, not implementation — avoid asserting on class names or internal state.
+- Prefer `getByRole` and `getByText` selectors in Playwright over CSS selectors. Use CSS selectors only when there is no accessible alternative (e.g. the demo-mode `<select>`).
+- Make E2E tests deterministic. The demo flow has a `#demo-mode` toggle (`results` / `no-results`) — set it explicitly rather than relying on the auto-alternate behavior.
+
+### When tests fail
+
+- Read the full error output before attempting a fix.
+- Do not delete or skip tests to make the suite pass.
+- If a test is genuinely wrong (testing the wrong thing), explain why in the PR description before modifying it.
+- Every bug found in production must get a regression test (Playwright if it's a user-visible flow, Vitest if it's pure logic) before the fix is merged.
