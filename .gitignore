@@ -2,6 +2,13 @@
 .vite/
 node_modules/
 dist/
+.env*
+
+# Test artifacts
+playwright-report/
+test-results/
+playwright/.cache/
+coverage/
 
 # Agent orchestrator
 outputs/
@@ -9,4 +16,3 @@ outputs/
 tasks/backlog.json
 __pycache__/
 *.pyc
-.env

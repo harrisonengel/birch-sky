@@ -1,0 +1,76 @@
+# Path 2: Better Activation + Lower Churn
+# =========================================
+# Only 2 assumption changes from baseline.
+# Hits $512.7K ARR by Aug 2027.
+#
+# Changes from baseline:
+#   activation_rate: 30% → 40% (33% improvement)
+#   buyer_churn_monthly: 10% → 4% (60% reduction)
+#
+# Rationale:
+#   - 40% activation is strong but achievable with good onboarding,
+#     guided agent setup, and free-tier trial experience
+#   - 4% churn requires the trust layer and agent platform to deliver
+#     real, repeated value — the "aha moment" must happen fast
+#   - No change to pricing or purchase frequency — purely about
+#     converting and retaining the buyers you already attract
+
+model_name: "IE Marketplace — Path 2: Better Activation + Lower Churn"
+version: "0.1.0"
+date: "2026-04-06"
+
+assumptions:
+  supply:
+    sellers_onboarded: 50
+    listings_per_seller: 4
+    listing_category_count: 8
+    pct_listings_complete_metadata: 0.70
+    supply_growth_rate_mom: 0.15
+    time_to_first_listing_days: 7
+
+  demand:
+    buyer_signups: 200
+    buyer_to_query_conversion: 0.60
+    queries_per_active_buyer: 5
+    bounties_posted: 30
+    query_fulfillment_rate: 0.40
+    bounty_fulfillment_rate: 0.25
+
+  transactions:
+    activation_rate: 0.40                # CHANGED: 0.30 → 0.40
+    purchases_per_buyer_per_month: 2
+    average_transaction_value: 500
+    take_rate: 0.15
+    transaction_growth_rate_mom: 0.20
+
+  liquidity:
+    buyer_to_seller_ratio: 4.0
+    listing_liquidity_pct: 0.25
+    buyer_purchase_within_90d: 0.35
+    repeat_purchase_rate: 0.40
+    seller_churn_monthly: 0.05
+    buyer_churn_monthly: 0.04            # CHANGED: 0.10 → 0.04
+    gmv_pct_from_repeat: 0.30
+
+  trust:
+    dispute_rate: 0.05
+    dispute_resolution_rate: 0.90
+    dispute_resolution_days: 3
+    verified_outcome_count: 0
+    reliability_score_improvement_mom: 0.02
+
+  thickness:
+    max_match_rate: 0.65
+    density_halflife: 80
+    churn_thickness_penalty: 0.08
+    price_acceptance_rate: 0.70
+
+  time:
+    months: 16
+    start_month: "2026-05"
+
+targets:
+  - name: "ARR $500K"
+    metric: "arr"
+    value: 500000
+    by: "2027-08"
