@@ -18,6 +18,12 @@ from .review import review_gate
 ALWAYS_GATE = {TaskType.SPEC, TaskType.DECIDE}
 MAX_FEEDBACK_ITERATIONS = 5
 SKILLS_DIR = ".claude/skills"
+# How often to hit the Linear API looking for new work, in seconds.
+# Linear's rate limit for personal API keys is ~1500 req/hour; 60s keeps
+# us well under that even with several loops running in parallel.
+LINEAR_POLL_INTERVAL_S = 60
+# How long to sleep between queue checks when we're idle.
+IDLE_SLEEP_S = 5
 
 
 def _validate_identity(identity: str) -> None:
@@ -191,8 +197,12 @@ def _run_review_loop(task: Task, result: dict) -> bool:
 
 def run_loop(identity: str):
     print(f"Orchestrator running as [{identity}]. Ctrl+C to pause.")
+    last_linear_poll = 0.0
     while True:
-        pull_from_linear(identity)
+        now = time.monotonic()
+        if now - last_linear_poll >= LINEAR_POLL_INTERVAL_S:
+            pull_from_linear(identity)
+            last_linear_poll = now
 
         # Triage any pending proposals first (scoped to this identity)
         proposals = q.pending_proposals(identity)
@@ -218,7 +228,7 @@ def run_loop(identity: str):
         task = q.get_next_ready(identity)
         if task is None:
             print("No ready tasks. Waiting...")
-            time.sleep(5)
+            time.sleep(IDLE_SLEEP_S)
             continue
 
         result = _execute_task(task)
