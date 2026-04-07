@@ -21,6 +21,15 @@ This marketplace will form an indispensable backbone of the agent economy, and r
 - Name spec files descriptively (e.g. `mvp-auth-design.md`), not `README.md`.
 - Specs live under `specs/features/<feature-name>/` or `specs/<area>/` as appropriate.
 
+## API & CLI Tooling Rules
+
+- **Every new API or service must ship with a CLI tool** (or extend an
+  existing CLI tool) that lets a human or Claude exercise the API end
+  to end. The CLI is what we will use to populate real demo data, so
+  shipping an API without one is incomplete work.
+- **CLI tools are written in Go using [spf13/cobra](https://github.com/spf13/cobra).**
+  This is the CLI framework we standardize on across the project.
+
 ## Branch & PR Rules
 
 - **Never commit directly to master.** All work happens on a feature branch.
