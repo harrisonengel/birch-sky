@@ -1,36 +1,85 @@
+"""Orchestrator loop.
+
+Shells out to `claude -p` for task execution. Trusts .claude/settings.local.json
+for tool permissions. Python owns: queue, review gates, Linear sync, feedback loops.
+"""
+
 import argparse
 import time
 
-from .models import Task, TaskType, Status
-from .context import build
-from .agent import run
-from . import taskqueue as q
+from . import claude_cli
 from . import linear
+from . import taskqueue as q
+from .models import Status, Task, TaskType
 from .review import review_gate
 
 ALWAYS_GATE = {TaskType.SPEC, TaskType.DECIDE}
+MAX_FEEDBACK_ITERATIONS = 5
 
 
-def triage_proposals(result, parent_task: Task):
-    for proposal in result.proposed_tasks:
-        print(f"\nProposed task: [{proposal.get('type', '?')}] {proposal.get('goal', '?')}")
+def _dep_output_paths(task: Task) -> list[str]:
+    all_tasks = {t.id: t for t in q.load()}
+    return [
+        all_tasks[d].output_path
+        for d in task.dependencies
+        if d in all_tasks and all_tasks[d].output_path
+    ]
+
+
+def triage_proposals(result_text: str, parent_task: Task):
+    """Parse '## Proposed follow-ups' section from claude's final message and triage each."""
+    proposals = _parse_proposals(result_text)
+    if not proposals:
+        return
+
+    print(f"\nFound {len(proposals)} proposed follow-up(s):")
+    for goal, task_type in proposals:
+        print(f"\nProposed task: [{task_type}] {goal}")
         resp = input("Add to queue? [y/n]: ").strip().lower()
-        if resp == "y":
-            new_task = Task(
-                goal=proposal["goal"],
-                type=TaskType(proposal.get("type", "implement")),
-                acceptance_criteria=proposal.get("acceptance_criteria", ""),
-                dependencies=[parent_task.id],
-                proposed_by=f"agent:{parent_task.id}",
-                authorized_by="human",
-                status=Status.READY,
-            )
-            q.add(new_task)
-            print(f"  Added: {new_task.id}")
-            issue = linear.create_issue(new_task)
-            if issue:
-                q.update(new_task.id, linear_issue_id=issue["id"], linear_url=issue["url"])
-                print(f"  Linear: {issue['url']}")
+        if resp != "y":
+            continue
+        try:
+            tt = TaskType(task_type)
+        except ValueError:
+            tt = TaskType.IMPLEMENT
+        new_task = Task(
+            goal=goal,
+            type=tt,
+            dependencies=[parent_task.id],
+            proposed_by=f"agent:{parent_task.id}",
+            authorized_by="human",
+            status=Status.READY,
+        )
+        q.add(new_task)
+        print(f"  Added: {new_task.id}")
+        issue = linear.create_issue(new_task)
+        if issue:
+            q.update(new_task.id, linear_issue_id=issue["id"], linear_url=issue["url"])
+            print(f"  Linear: {issue['url']}")
+
+
+def _parse_proposals(text: str) -> list[tuple[str, str]]:
+    """Extract '- [type] goal' lines from under '## Proposed follow-ups'."""
+    proposals = []
+    in_section = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("## proposed follow-ups"):
+            in_section = True
+            continue
+        if in_section and stripped.startswith("## "):
+            break
+        if in_section and stripped.startswith("-"):
+            # Format: - [type] goal
+            body = stripped.lstrip("- ").strip()
+            if body.startswith("["):
+                end = body.find("]")
+                if end != -1:
+                    task_type = body[1:end].strip()
+                    goal = body[end + 1 :].strip()
+                    if goal:
+                        proposals.append((goal, task_type))
+    return proposals
 
 
 def pull_from_linear():
@@ -47,11 +96,66 @@ def pull_from_linear():
             type=TaskType.IMPLEMENT,
             notes=issue.get("description") or "",
             linear_issue_id=issue["id"],
-            status=Status.PENDING,  # still needs human authorization
+            status=Status.PENDING,
             proposed_by="linear",
         )
         q.add(new_task)
         print(f"Imported from Linear: [{issue['identifier']}] {issue['title']}")
+
+
+def _execute_task(task: Task) -> dict:
+    """Run a task through claude, persist result, update session_id on the task."""
+    print(f"\nStarting: [{task.type.value}] {task.goal}")
+    q.update(task.id, status=Status.IN_PROGRESS)
+    if task.linear_issue_id:
+        linear.update_issue_status(task.linear_issue_id, "In Progress")
+
+    dep_paths = _dep_output_paths(task)
+    result = claude_cli.run_task(task, dep_paths)
+
+    if not result["ok"]:
+        print(f"  claude error: {result['error']}")
+        q.update(task.id, status=Status.BLOCKED, notes=result["error"])
+        return result
+
+    out_path = claude_cli.save_result(task.id, result)
+    q.update(
+        task.id,
+        session_id=result["session_id"],
+        output_path=out_path,
+    )
+    task.session_id = result["session_id"]
+    task.output_path = out_path
+    return result
+
+
+def _run_review_loop(task: Task, result: dict) -> bool:
+    """Show review gate; on reject, ask for feedback and resume claude. Returns approved bool."""
+    for iteration in range(MAX_FEEDBACK_ITERATIONS):
+        approved = review_gate(task, result)
+        if approved:
+            return True
+
+        feedback = input("\nFeedback for Claude (empty to block task): ").strip()
+        if not feedback:
+            return False
+
+        if not result.get("session_id"):
+            print("  No session_id to resume — blocking task.")
+            return False
+
+        print(f"\nResuming session {result['session_id'][:8]} with feedback...")
+        result = claude_cli.resume_with_feedback(result["session_id"], feedback)
+        if not result["ok"]:
+            print(f"  claude error on resume: {result['error']}")
+            q.update(task.id, notes=f"Resume failed: {result['error']}")
+            return False
+
+        out_path = claude_cli.save_result(task.id, result)
+        q.update(task.id, session_id=result["session_id"], output_path=out_path)
+
+    print(f"  Max feedback iterations ({MAX_FEEDBACK_ITERATIONS}) reached.")
+    return False
 
 
 def run_loop():
@@ -64,14 +168,20 @@ def run_loop():
         if proposals:
             print(f"\n{len(proposals)} pending proposal(s) need triage.")
             for task in proposals:
-                print(f"\n[{task.type}] {task.goal}")
+                print(f"\n[{task.type.value}] {task.goal}")
+                if task.notes:
+                    print(f"  Notes: {task.notes[:200]}")
                 resp = input("Approve? [y/n]: ").strip().lower()
                 if resp == "y":
                     q.update(task.id, status=Status.READY, authorized_by="human")
                     if not task.linear_issue_id:
                         issue = linear.create_issue(task)
                         if issue:
-                            q.update(task.id, linear_issue_id=issue["id"], linear_url=issue["url"])
+                            q.update(
+                                task.id,
+                                linear_issue_id=issue["id"],
+                                linear_url=issue["url"],
+                            )
                             print(f"  Linear: {issue['url']}")
 
         task = q.get_next_ready()
@@ -80,31 +190,21 @@ def run_loop():
             time.sleep(5)
             continue
 
-        print(f"\nStarting: [{task.type}] {task.goal}")
-        q.update(task.id, status=Status.IN_PROGRESS)
-        if task.linear_issue_id:
-            linear.update_issue_status(task.linear_issue_id, "In Progress")
-
-        system_prompt = build(task)
-        result = run(task, system_prompt)
-
-        # Check for API errors
-        if result.output.startswith("API ERROR:"):
-            print(f"Task {task.id} failed: {result.output}")
-            q.update(task.id, status=Status.BLOCKED, notes=result.output)
+        result = _execute_task(task)
+        if not result["ok"]:
             continue
 
-        needs_gate = task.type in ALWAYS_GATE
-        if needs_gate:
-            approved = review_gate(task, result)
+        if task.type in ALWAYS_GATE:
+            approved = _run_review_loop(task, result)
             if not approved:
                 q.update(task.id, status=Status.BLOCKED, notes="Human rejected output")
                 continue
 
-        q.update(task.id, status=Status.DONE, output_path=f"outputs/{task.id}/output.md")
+        q.update(task.id, status=Status.DONE)
         if task.linear_issue_id:
             linear.update_issue_status(task.linear_issue_id, "Done")
-        triage_proposals(result, task)
+
+        triage_proposals(result.get("result", ""), task)
         print(f"Done: {task.id}")
 
 
@@ -112,7 +212,6 @@ def seed(goal: str, task_type: str = "spec"):
     task = Task(
         goal=goal,
         type=TaskType(task_type),
-        context_refs=["CLAUDE.md"],
         acceptance_criteria="Clear enough for an engineer to implement without asking questions",
         status=Status.READY,
         authorized_by="human",

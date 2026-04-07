@@ -38,11 +38,4 @@ class Task:
     notes: str = ""
     linear_issue_id: Optional[str] = None
     linear_url: Optional[str] = None
-
-
-@dataclass
-class AgentResult:
-    output: str
-    proposed_tasks: list[dict] = field(default_factory=list)
-    open_questions: list[str] = field(default_factory=list)
-    files_written: list[str] = field(default_factory=list)
+    session_id: Optional[str] = None
