@@ -3,3 +3,9 @@
 node_modules/
 dist/
 .env*
+
+# Test artifacts
+playwright-report/
+test-results/
+playwright/.cache/
+coverage/
