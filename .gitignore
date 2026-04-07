@@ -9,3 +9,10 @@ playwright-report/
 test-results/
 playwright/.cache/
 coverage/
+
+# Agent orchestrator
+outputs/
+.agent/
+tasks/backlog.json
+__pycache__/
+*.pyc
