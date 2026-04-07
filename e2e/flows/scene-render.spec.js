@@ -43,7 +43,7 @@ async function getCanvasSize(page) {
 
 test.describe('scene canvas rendering', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?e2e=1');
     // Let the rAF loop run a few frames so the first render is committed.
     await page.waitForFunction(() => {
       const c = document.getElementById('scene');
