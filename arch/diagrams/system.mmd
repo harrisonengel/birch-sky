@@ -1,0 +1,23 @@
+flowchart LR
+    web_frontend[/Web Frontend (Demo)/]
+    mock_data[(Mock Data Module)]
+    buyers_agent_platform[Buyers Agent Platform (?)]
+    market_platform[Market Platform (?)]
+    postgres_db[(PostgreSQL (?))]
+    opensearch[(OpenSearch 3.x (?))]
+    minio[(MinIO S3 (?))]
+    stripe{{Stripe (?)}}
+    bedrock_titan{{AWS Bedrock Titan v2 (?)}}
+    claude_api{{Claude API (?)}}
+
+    web_frontend -->|reads imports| mock_data
+    web_frontend -->|submits query?| buyers_agent_platform
+    buyers_agent_platform -->|search/analyze MCP?| market_platform
+    buyers_agent_platform -->|agent inference?| claude_api
+    web_frontend -->|purchase Stripe flow?| market_platform
+    market_platform -->|read/write?| postgres_db
+    market_platform -->|read/write?| opensearch
+    market_platform -->|read/write?| minio
+    market_platform -->|charge?| stripe
+    market_platform -->|embed text?| bedrock_titan
+    market_platform -->|analyze_data tool?| claude_api
