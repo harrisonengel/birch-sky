@@ -1,4 +1,4 @@
-# MVP Trust Strategy: Curated Onboarding + Data Collection + Manual Refutation
+# MVP Trust Strategy: Curated Onboarding + Data Collection
 
 ## Decision
 
@@ -42,7 +42,7 @@ Every completed purchase must record the following. This is the raw material for
 
 Buyers contact the operator by email. The operator's contact email is displayed on the website (e.g. on the purchase confirmation screen and in a support/contact page).
 
-There is no `/refute` endpoint, no in-product dispute form, and no automated notification. The operator handles everything out-of-band.
+There is no `/refute` endpoint, no in-product dispute form, and no automated notification. The operator handles everything out-of-band — reviewing claims, processing Stripe refunds manually, and tracking outcomes in their own records (e.g. a spreadsheet or notes field in Stripe).
 
 **Post-MVP**: When volume warrants it, this becomes a structured in-product flow with API endpoints, automated operator notifications, and tracked refutation outcomes that feed the trust engine.
 
@@ -52,10 +52,10 @@ There is no `/refute` endpoint, no in-product dispute form, and no automated not
 
 When the trust engine is built, it will consume:
 - The `buyer_agent_query` + `agent_analysis_summary` pair to assess whether data answered the stated need
-- Refutation outcomes (once tracked) as ground-truth accuracy labels per seller
-- Transaction volume and refutation rate per seller over time
+- Refutation outcomes (tracked manually by the operator in MVP) as ground-truth accuracy labels per seller
+- Transaction volume per seller over time
 
-The schema additions above are designed so the trust engine can read from `transactions` directly without a migration.
+The schema additions above are designed so the trust engine can read from `transactions` directly without a migration. Refutation data collected manually in MVP will need to be imported when the automated system is built.
 
 ---
 

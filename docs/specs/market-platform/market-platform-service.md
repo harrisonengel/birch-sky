@@ -11,7 +11,7 @@ The Information Exchange needs its core backend: the Market Platform. This servi
 - **Three-tier architecture**: `[Web Front End] → [Buyers Agent Platform] → [Market Platform]`. The market platform is accessed by the agent platform, not directly by end users.
 - **`buyer_id` is an opaque string** — buyers live on the agent platform. Auth will be Cognito JWT validated in middleware, but for this MVP the middleware accepts a `buyer_id` header/field without validation.
 - **Data can be files or structured** — the `mvp_architecture.md` draft schema has both SQL and document storage paths. For MVP, we store files in MinIO and metadata in Postgres.
-- **Trust engine is deferred** — see [`specs/features/trust/mvp-trust-decision.md`](../../../specs/features/trust/mvp-trust-decision.md) for the full decision. In summary: sellers are manually onboarded (no self-serve, no automated scoring), every transaction captures rich metadata to seed the future trust engine, and buyer refutations trigger an operator email rather than automated processing.
+- **Trust engine is deferred** — see [`specs/features/trust/mvp-trust-decision.md`](../../../specs/features/trust/mvp-trust-decision.md) for the full decision. In summary: sellers are manually onboarded (no self-serve, no automated scoring), every transaction captures rich metadata to seed the future trust engine, and buyer refutations are handled entirely out-of-band via a support email on the website (no refutation APIs).
 
 ## Tech Stack
 
