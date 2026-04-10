@@ -138,11 +138,7 @@ CREATE TABLE transactions (
     completed_at TIMESTAMPTZ,
     -- trust engine seed data (see specs/features/trust/mvp-trust-decision.md)
     buyer_agent_query TEXT,           -- original query issued to the buyer agent
-    agent_analysis_summary TEXT,      -- what analyze_data returned to the agent
-    refutation_status TEXT NOT NULL DEFAULT 'none',  -- none | pending | upheld | rejected
-    refutation_notes TEXT,
-    refutation_raised_at TIMESTAMPTZ,
-    refutation_resolved_at TIMESTAMPTZ
+    agent_analysis_summary TEXT       -- what analyze_data returned to the agent
 );
 
 -- ownership
@@ -193,9 +189,6 @@ CREATE TABLE buy_orders (
 | `GET` | `/purchases/{id}` | Status |
 | `GET` | `/ownership` | List owned (`?buyer_id=X`) |
 | `GET` | `/ownership/{listing_id}/download` | Presigned download URL |
-| **Refutations** | | |
-| `POST` | `/purchases/{id}/refute` | Buyer raises a refutation (emails operator) |
-| `POST` | `/purchases/{id}/refute/resolve` | Operator resolves refutation (admin auth) |
 | **Buy Orders** | | |
 | `POST` | `/buy-orders` | Create |
 | `GET` | `/buy-orders` | List |

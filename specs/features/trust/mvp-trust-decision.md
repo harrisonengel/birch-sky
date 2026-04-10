@@ -1,4 +1,4 @@
-# MVP Trust Strategy: Curated Onboarding + Data Collection + Email Refutation
+# MVP Trust Strategy: Curated Onboarding + Data Collection + Manual Refutation
 
 ## Decision
 
@@ -10,7 +10,7 @@ The trust engine (Layer 2 of IE) is **deferred post-MVP**. Automated trust score
 
 **Purchase data collection**: Even though we are not computing trust scores yet, every transaction must capture as much metadata as possible so the trust engine has rich signal to learn from when it is built. See [Data to Collect](#data-to-collect) below.
 
-**Refutation / refund flow**: Buyers who believe purchased data did not meet the description can trigger a refutation. In MVP, this is an email notification to the operator, who reviews and processes the refund manually via Stripe.
+**Refutation / refund flow**: Entirely manual. Buyers who believe purchased data did not meet the description contact the operator via an email address displayed on the website. The operator reviews and processes any refund manually via Stripe. There is no API, no automation, and no in-product flow for refutations in the MVP.
 
 ---
 
@@ -35,27 +35,16 @@ Every completed purchase must record the following. This is the raw material for
 |---|---|---|
 | `buyer_agent_query` | `TEXT` | The original query the buyer agent was issued — ground truth for relevance scoring later |
 | `agent_analysis_summary` | `TEXT` | The `analyze_data` response the agent received — captures what the agent concluded about the data |
-| `refutation_status` | `TEXT` | `none \| pending \| upheld \| rejected` — outcome of any refutation |
-| `refutation_notes` | `TEXT` | Operator notes when resolving a refutation |
-| `refutation_raised_at` | `TIMESTAMPTZ` | When the buyer raised the dispute |
-| `refutation_resolved_at` | `TIMESTAMPTZ` | When the operator resolved it |
 
 ---
 
 ## Refutation Flow (MVP)
 
-1. Buyer submits a refutation via `POST /purchases/{id}/refute` with a `reason` field.
-2. The market platform sets `refutation_status = 'pending'` on the transaction and fires an email to the operator (`OPERATOR_EMAIL` env var) containing: buyer ID, listing title, purchase amount, agent query, and the buyer's stated reason.
-3. Operator reviews, processes the Stripe refund manually if upheld, then calls `POST /purchases/{id}/refute/resolve` with `outcome` (`upheld` | `rejected`) and optional `notes`.
-4. The platform updates `refutation_status`, `refutation_notes`, and `refutation_resolved_at`.
-5. No automated Stripe refund is triggered by the platform — the operator handles that manually for now.
+Buyers contact the operator by email. The operator's contact email is displayed on the website (e.g. on the purchase confirmation screen and in a support/contact page).
 
-### New endpoints
+There is no `/refute` endpoint, no in-product dispute form, and no automated notification. The operator handles everything out-of-band.
 
-| Method | Path | Purpose |
-|---|---|---|
-| `POST` | `/purchases/{id}/refute` | Buyer raises a refutation |
-| `POST` | `/purchases/{id}/refute/resolve` | Operator resolves it (internal/admin auth) |
+**Post-MVP**: When volume warrants it, this becomes a structured in-product flow with API endpoints, automated operator notifications, and tracked refutation outcomes that feed the trust engine.
 
 ---
 
@@ -63,7 +52,7 @@ Every completed purchase must record the following. This is the raw material for
 
 When the trust engine is built, it will consume:
 - The `buyer_agent_query` + `agent_analysis_summary` pair to assess whether data answered the stated need
-- Refutation outcomes (`upheld` / `rejected`) as ground-truth accuracy labels per seller
+- Refutation outcomes (once tracked) as ground-truth accuracy labels per seller
 - Transaction volume and refutation rate per seller over time
 
 The schema additions above are designed so the trust engine can read from `transactions` directly without a migration.
