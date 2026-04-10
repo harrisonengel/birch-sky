@@ -11,7 +11,7 @@ The Information Exchange needs its core backend: the Market Platform. This servi
 - **Three-tier architecture**: `[Web Front End] → [Buyers Agent Platform] → [Market Platform]`. The market platform is accessed by the agent platform, not directly by end users.
 - **`buyer_id` is an opaque string** — buyers live on the agent platform. Auth will be Cognito JWT validated in middleware, but for this MVP the middleware accepts a `buyer_id` header/field without validation.
 - **Data can be files or structured** — the `mvp_architecture.md` draft schema has both SQL and document storage paths. For MVP, we store files in MinIO and metadata in Postgres.
-- **Trust scores are out of scope** for this build but the schema should not preclude adding them later (seller table left extensible).
+- **Trust engine is deferred** — see [`specs/features/trust/mvp-trust-decision.md`](../../../specs/features/trust/mvp-trust-decision.md) for the full decision. In summary: sellers are manually onboarded (no self-serve, no automated scoring), every transaction captures rich metadata to seed the future trust engine, and buyer refutations trigger an operator email rather than automated processing.
 
 ## Tech Stack
 
@@ -135,7 +135,14 @@ CREATE TABLE transactions (
     stripe_payment_id TEXT,
     status TEXT NOT NULL DEFAULT 'pending',  -- pending | completed | failed
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    completed_at TIMESTAMPTZ
+    completed_at TIMESTAMPTZ,
+    -- trust engine seed data (see specs/features/trust/mvp-trust-decision.md)
+    buyer_agent_query TEXT,           -- original query issued to the buyer agent
+    agent_analysis_summary TEXT,      -- what analyze_data returned to the agent
+    refutation_status TEXT NOT NULL DEFAULT 'none',  -- none | pending | upheld | rejected
+    refutation_notes TEXT,
+    refutation_raised_at TIMESTAMPTZ,
+    refutation_resolved_at TIMESTAMPTZ
 );
 
 -- ownership
@@ -186,6 +193,9 @@ CREATE TABLE buy_orders (
 | `GET` | `/purchases/{id}` | Status |
 | `GET` | `/ownership` | List owned (`?buyer_id=X`) |
 | `GET` | `/ownership/{listing_id}/download` | Presigned download URL |
+| **Refutations** | | |
+| `POST` | `/purchases/{id}/refute` | Buyer raises a refutation (emails operator) |
+| `POST` | `/purchases/{id}/refute/resolve` | Operator resolves refutation (admin auth) |
 | **Buy Orders** | | |
 | `POST` | `/buy-orders` | Create |
 | `GET` | `/buy-orders` | List |
