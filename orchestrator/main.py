@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 import time
+from typing import Optional
 
 from . import claude_cli
 from . import linear
@@ -118,13 +119,30 @@ def pull_from_linear(identity: str):
 
     Imported tasks land as READY (not PENDING) — the Linear label *is* the
     human authorization to run, so no second triage step is needed.
+
+    If a BLOCKED task already exists for a Linear issue that's back in Todo
+    (typically because the human fixed whatever blocked it — granted
+    permissions, edited the acceptance criteria, etc.), re-promote it to
+    READY instead of importing a duplicate.
     """
     issues = linear.fetch_todo_issues(identity)
     if not issues:
         return
-    existing = {t.linear_issue_id for t in q.load() if t.linear_issue_id}
+    all_tasks = q.load()
+    by_linear_id = {t.linear_issue_id: t for t in all_tasks if t.linear_issue_id}
     for issue in issues:
-        if issue["id"] in existing:
+        existing_task = by_linear_id.get(issue["id"])
+        if existing_task is not None:
+            if existing_task.status == Status.BLOCKED:
+                q.update(
+                    existing_task.id,
+                    status=Status.READY,
+                    notes=f"Re-promoted from BLOCKED: {existing_task.notes}",
+                )
+                print(
+                    f"Re-promoted from Linear [{identity}]: "
+                    f"[{issue['identifier']}] {issue['title']}"
+                )
             continue
         new_task = Task(
             goal=issue["title"],
@@ -141,6 +159,27 @@ def pull_from_linear(identity: str):
             f"Imported from Linear [{identity}]: "
             f"[{issue['identifier']}] {issue['title']}"
         )
+
+
+def _permission_denials(result: dict) -> list[dict]:
+    """Extract permission_denials from a claude -p JSON result.
+
+    Headless `claude -p` reports `is_error=false` and `stop_reason=end_turn`
+    even when the LLM gave up because a tool was denied — from its perspective
+    it simply ended its turn by asking a question. The real signal lives in
+    `raw.permission_denials`, a list of the tool calls that were refused.
+    """
+    raw = result.get("raw") or {}
+    return raw.get("permission_denials") or []
+
+
+def _format_denials(denials: list[dict]) -> str:
+    lines = []
+    for d in denials:
+        tool = d.get("tool_name", "?")
+        path = (d.get("tool_input") or {}).get("file_path", "")
+        lines.append(f"{tool}({path})" if path else tool)
+    return ", ".join(lines)
 
 
 def _execute_task(task: Task) -> dict:
@@ -166,6 +205,24 @@ def _execute_task(task: Task) -> dict:
     )
     task.session_id = result["session_id"]
     task.output_path = out_path
+
+    denials = _permission_denials(result)
+    if denials:
+        # Turn the ok result into a failure so the outer loop doesn't mark
+        # it Done. The output is still saved so the human can see what
+        # claude tried to do.
+        summary = _format_denials(denials)
+        msg = f"Blocked: {len(denials)} tool call(s) denied: {summary}"
+        print(f"  {msg}")
+        print(
+            "  Add the missing tool(s) to .claude/settings.local.json "
+            "`permissions.allow` and re-run."
+        )
+        q.update(task.id, status=Status.BLOCKED, notes=msg)
+        result["ok"] = False
+        result["error"] = msg
+        result["denials"] = denials
+
     return result
 
 
@@ -206,10 +263,10 @@ def run_loop(identity: str):
         bool(os.environ.get("LINEAR_API_KEY")),
         os.environ.get("LINEAR_TEAM_ID") or "(unset)",
     )
-    last_linear_poll = 0.0
+    last_linear_poll: Optional[float] = None
     while True:
         now = time.monotonic()
-        if now - last_linear_poll >= LINEAR_POLL_INTERVAL_S:
+        if last_linear_poll is None or now - last_linear_poll >= LINEAR_POLL_INTERVAL_S:
             log.info("Polling Linear for new %s tasks...", identity)
             pull_from_linear(identity)
             last_linear_poll = now
@@ -243,6 +300,13 @@ def run_loop(identity: str):
 
         result = _execute_task(task)
         if not result["ok"]:
+            # If claude was blocked on permissions, walk Linear back to
+            # Todo so the issue is picked up again once the permission
+            # is granted. Other failure modes (subprocess errors, JSON
+            # parse failures, claude binary missing) leave it in
+            # In Progress for manual intervention.
+            if result.get("denials") and task.linear_issue_id:
+                linear.update_issue_status(task.linear_issue_id, "Todo")
             continue
 
         if task.type in ALWAYS_GATE:
