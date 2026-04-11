@@ -16,3 +16,5 @@ outputs/
 tasks/backlog.json
 __pycache__/
 *.pyc
+*.egg-info/
+.venv/
