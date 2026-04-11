@@ -41,6 +41,11 @@ export function createAgentIdleFrames() {
     drawRect(ctx, 14, 11 + offsetY, 1, 5, S, '#666');
     drawRect(ctx, 17, 11 + offsetY, 1, 5, S, '#666');
 
+    // Bow tie (red)
+    drawRect(ctx, 14, 11 + offsetY, 1, 2, S, '#cc0000');
+    drawRect(ctx, 15, 11 + offsetY, 2, 1, S, '#ff0000');
+    drawRect(ctx, 17, 11 + offsetY, 1, 2, S, '#cc0000');
+
     // Arms
     drawRect(ctx, 9, 12 + offsetY, 2, 8, S, '#777');
     drawRect(ctx, 21, 12 + offsetY, 2, 8, S, '#777');
@@ -89,6 +94,11 @@ export function createAgentRunFrames() {
     drawRect(ctx, 11 + lean, 11, 10, 10, S, '#888');
     drawRect(ctx, 14 + lean, 11, 1, 5, S, '#666');
     drawRect(ctx, 17 + lean, 11, 1, 5, S, '#666');
+
+    // Bow tie (red)
+    drawRect(ctx, 14 + lean, 11, 1, 2, S, '#cc0000');
+    drawRect(ctx, 15 + lean, 11, 2, 1, S, '#ff0000');
+    drawRect(ctx, 17 + lean, 11, 1, 2, S, '#cc0000');
 
     // Arms (swinging opposite to legs)
     drawRect(ctx, 9 + lean - lp.rl, 12, 2, 8, S, '#777');

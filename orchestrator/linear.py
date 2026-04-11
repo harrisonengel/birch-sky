@@ -12,6 +12,7 @@ Required environment:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import urllib.error
@@ -21,6 +22,8 @@ from typing import Optional
 from .models import Task
 
 LINEAR_API = "https://api.linear.app/graphql"
+
+log = logging.getLogger("orchestrator.linear")
 
 _state_cache: dict = {}
 
@@ -33,6 +36,9 @@ def _gql(query: str, variables: Optional[dict] = None) -> dict:
     api_key = os.environ.get("LINEAR_API_KEY")
     if not api_key:
         raise RuntimeError("LINEAR_API_KEY not set")
+
+    log.debug("Linear GraphQL request variables=%s", variables)
+    log.debug("Linear GraphQL query:\n%s", query.strip())
 
     body = json.dumps({"query": query, "variables": variables or {}}).encode()
     req = urllib.request.Request(
@@ -49,11 +55,12 @@ def _gql(query: str, variables: Optional[dict] = None) -> dict:
 
     if "errors" in data:
         raise RuntimeError(f"Linear GraphQL error: {data['errors']}")
+    log.debug("Linear GraphQL response: %s", json.dumps(data, indent=2)[:2000])
     return data
 
 
 _GET_STATES = """
-query($teamId: String!) {
+query($teamId: ID!) {
   workflowStates(filter: { team: { id: { eq: $teamId } } }) {
     nodes { id name }
   }
@@ -141,13 +148,21 @@ def update_issue_status(issue_id: str, state_name: str) -> bool:
 
 
 _GET_TODO_ISSUES = """
-query($teamId: String!, $label: String!) {
+query($teamId: ID!, $label: String!) {
   issues(filter: {
     team: { id: { eq: $teamId } },
     state: { name: { eq: "Todo" } },
     labels: { name: { eq: $label } }
   }) {
-    nodes { id identifier title description }
+    nodes { id identifier title description state { name } labels { nodes { name } } }
+  }
+}
+"""
+
+_DIAGNOSE_ISSUES = """
+query($teamId: ID!) {
+  issues(filter: { team: { id: { eq: $teamId } } }, first: 50) {
+    nodes { identifier title state { name } labels { nodes { name } } }
   }
 }
 """
@@ -156,16 +171,64 @@ query($teamId: String!, $label: String!) {
 def fetch_todo_issues(identity: str) -> list[dict]:
     """Pull Todo issues labeled `agent:<identity>`. Returns [] if Linear disabled."""
     if not _enabled():
+        log.debug("Linear disabled (LINEAR_API_KEY or LINEAR_TEAM_ID unset)")
         return []
+    label = f"agent:{identity}"
+    log.debug("Fetching Todo issues with label=%s", label)
     try:
         data = _gql(
             _GET_TODO_ISSUES,
             {
                 "teamId": os.environ["LINEAR_TEAM_ID"],
-                "label": f"agent:{identity}",
+                "label": label,
             },
         )
-        return data["data"]["issues"]["nodes"]
+        nodes = data["data"]["issues"]["nodes"]
+        log.info("Linear returned %d issue(s) matching state=Todo label=%s", len(nodes), label)
+        for n in nodes:
+            log.debug(
+                "  [%s] %s (state=%s labels=%s)",
+                n.get("identifier"),
+                n.get("title"),
+                (n.get("state") or {}).get("name"),
+                [l.get("name") for l in (n.get("labels") or {}).get("nodes", [])],
+            )
+        if not nodes and log.isEnabledFor(logging.INFO):
+            _diagnose_missing(label)
+        return nodes
     except Exception as e:
         print(f"  Linear fetch_todo_issues failed: {e}", file=sys.stderr)
         return []
+
+
+def _diagnose_missing(expected_label: str) -> None:
+    """When the filtered query returned nothing, dump a snapshot of the team's
+    issues so the user can see *why* — wrong state name, wrong label, or
+    nothing labeled at all."""
+    try:
+        data = _gql(_DIAGNOSE_ISSUES, {"teamId": os.environ["LINEAR_TEAM_ID"]})
+    except Exception as e:
+        log.info("Diagnostic dump failed: %s", e)
+        return
+    nodes = data["data"]["issues"]["nodes"]
+    if not nodes:
+        log.info("Diagnostic: team has no issues at all.")
+        return
+    log.info(
+        "Diagnostic: filter matched 0 issues. Snapshot of up to %d team issues "
+        "(looking for state=Todo label=%s):",
+        len(nodes),
+        expected_label,
+    )
+    for n in nodes:
+        state = (n.get("state") or {}).get("name")
+        labels = [l.get("name") for l in (n.get("labels") or {}).get("nodes", [])]
+        marker = ""
+        if state == "Todo" and expected_label in labels:
+            marker = " <-- SHOULD MATCH"
+        elif expected_label in labels:
+            marker = f" <-- has label but state is {state!r}, not 'Todo'"
+        elif state == "Todo":
+            marker = f" <-- in Todo but labels={labels}"
+        log.info("  [%s] %s  state=%r labels=%s%s",
+                 n.get("identifier"), n.get("title"), state, labels, marker)
