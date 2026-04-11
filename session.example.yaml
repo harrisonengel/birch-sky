@@ -1,0 +1,6 @@
+max_turns: 20
+
+starting_context:
+  background: "You work for a hedge fund researching alternative data sources."
+  goal: "Find datasets related to satellite imagery of retail parking lots."
+  constraints: "Budget under $500 per dataset. Prefer weekly update frequency."

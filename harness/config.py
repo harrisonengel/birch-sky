@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import yaml
 
 
 @dataclass
 class HarnessConfig:
+    """Infrastructure config — model endpoint, credentials, search backend.
+
+    Session-level state (starting context, max turns) is NOT stored here;
+    it is passed in per-invocation via the session file.
+    """
+
     model: str
     api_key: str
     opensearch_url: str
     opensearch_index: str = "listings"
     opensearch_user: str | None = None
     opensearch_pass: str | None = None
-    starting_context: dict = field(default_factory=dict)
-    max_turns: int = 20
 
 
 def load(path: str) -> HarnessConfig:
@@ -38,10 +42,6 @@ def load(path: str) -> HarnessConfig:
     os_user = os_cfg.get("user")
     os_pass = os_cfg.get("pass")
 
-    session = raw.get("session", {})
-    starting_context = session.get("starting_context", {})
-    max_turns = int(session.get("max_turns", 20))
-
     return HarnessConfig(
         model=model_name,
         api_key=api_key,
@@ -49,6 +49,4 @@ def load(path: str) -> HarnessConfig:
         opensearch_index=os_index,
         opensearch_user=os_user,
         opensearch_pass=os_pass,
-        starting_context=starting_context,
-        max_turns=max_turns,
     )

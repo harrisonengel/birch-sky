@@ -21,12 +21,27 @@ Go CLI (cobra)  →  subprocess  →  Python harness (anthropic SDK + custom loo
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| Config loader | `harness/config.py` | Load YAML, resolve env vars |
+| Config loader | `harness/config.py` | Load infrastructure YAML (model, opensearch), resolve env vars |
+| Session loader | `harness/session.py` | Load per-call session YAML (starting_context, max_turns) and build system prompt |
 | OpenSearch tool | `harness/tools.py` | `search_opensearch` + Anthropic tool schema + `dispatch` |
-| Session state | `harness/session.py` | Build system prompt from config |
 | Runner | `harness/runner.py` | Custom Anthropic tool loop (messages.create + tool_result) |
-| Entry point | `harness/__main__.py` | argparse CLI |
+| Entry point | `harness/__main__.py` | argparse CLI — takes `-c` config, `-s` session, `-i` input |
 | Go CLI | `src/market-platform/cmd/agent/` | cobra wrapper calling `python -m harness` |
+
+### Config vs. session split
+
+The harness separates **infrastructure config** from **per-invocation session
+state**:
+
+- **Config** (`-c config.yaml`) is stable, reusable across calls, and lives on
+  disk alongside deployment. It contains the model endpoint and search
+  backend — nothing about *what* the agent is trying to do.
+- **Session** (`-s session.yaml`) is the call itself. Each invocation of the
+  harness provides its own session describing the agent's starting context
+  (background, goal, constraints) and turn budget. A caller running many
+  different buyer queries against the same config will produce many
+  different session payloads.
+- **Input** (`-i "..."`) is the initial user message seeding the first turn.
 
 ### Config schema (`config.example.yaml`)
 
@@ -39,13 +54,22 @@ opensearch:
   index: "listings"                         # matches mapping.go IndexName
   # user: ""   # optional basic auth
   # pass: ""
-session:
-  mode: "context"
-  max_turns: 20
-  starting_context:
-    background: "You work for a hedge fund..."
-    goal: "Find datasets related to satellite imagery..."
-    constraints: "Budget under $500 per dataset."
+```
+
+### Session schema (`session.example.yaml`)
+
+```yaml
+max_turns: 20
+starting_context:
+  background: "You work for a hedge fund..."
+  goal: "Find datasets related to satellite imagery..."
+  constraints: "Budget under $500 per dataset."
+```
+
+### Invocation
+
+```bash
+python -m harness -c config.yaml -s session.yaml -i "find satellite data"
 ```
 
 ### Search query compatibility
@@ -74,7 +98,8 @@ both dependencies entirely. See
 
 ## Future work
 
-- Resumable sessions (session file save/restore)
+- Resumable sessions: extend the session file to carry prior transcript and
+  support `--resume` across multi-turn workflows
 - Additional tools: `get_listing`, `analyze_data`
 - Vector search support
 - Additional model providers (OpenAI, Bedrock) via thin per-provider loops
