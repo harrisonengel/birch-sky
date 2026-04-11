@@ -5,24 +5,27 @@ from anthropic import Anthropic
 from . import config as config_module
 from . import session as session_module
 from . import tools
+from .config import HarnessConfig
 from .session import Session
 
 
 def run(config_path: str, session_path: str, user_input: str) -> None:
-    """Run one invocation of the buyer-agent harness.
-
-    Args:
-        config_path: Path to infrastructure config (model, opensearch).
-        session_path: Path to session file (starting context, max_turns).
-            The session is per-call and NOT part of the harness config.
-        user_input: The initial user message for this call.
-    """
+    """CLI entry point: load config/session from disk and print the result."""
     config = config_module.load(config_path)
     session = session_module.load(session_path)
-    _execute(config, session, user_input)
+    result = execute(config, session, user_input)
+    print(result)
 
 
-def _execute(config, session: Session, user_input: str) -> None:
+def execute(config: HarnessConfig, session: Session, user_input: str) -> str:
+    """Run one agent invocation against the given config + session.
+
+    This is the programmatic entry point — a future HTTP API would call
+    this directly with in-memory objects rather than loading from disk.
+
+    Returns the agent's final text response, or an empty string if the
+    loop terminated without producing one.
+    """
     tools.configure(
         url=config.opensearch_url,
         index=config.opensearch_index,
@@ -61,7 +64,7 @@ def _execute(config, session: Session, user_input: str) -> None:
 
         for block in response.content:
             if block.type == "text":
-                print(block.text)
-        return
+                return block.text
+        return ""
 
-    print(f"[harness] max_turns ({session.max_turns}) reached without final answer")
+    return f"[harness] max_turns ({session.max_turns}) reached without final answer"

@@ -4,17 +4,17 @@
 
 A standalone, config-driven Python agent runner that lets a buyer's agent
 query the IE marketplace (OpenSearch) without running the full server stack.
-The Go CLI is a thin cobra wrapper; all logic lives in Python. The harness
-uses the Anthropic SDK directly with a small custom tool loop — no agent
-framework or litellm — to keep the dependency surface minimal.
+The harness uses the Anthropic SDK directly with a small custom tool loop —
+no agent framework or litellm — to keep the dependency surface minimal.
+
+The harness is a Python script today. The core loop (`harness.runner.execute`)
+takes in-memory `HarnessConfig` and `Session` objects, so it is ready to be
+wrapped in an HTTP endpoint as a next step without further refactoring.
 
 ## Architecture
 
 ```
-Go CLI (cobra)  →  subprocess  →  Python harness (anthropic SDK + custom loop)
-                                      │
-                                      ▼
-                                  OpenSearch (raw HTTP via requests)
+python -m harness  →  anthropic SDK tool loop  →  OpenSearch (raw HTTP)
 ```
 
 ### Components
@@ -24,9 +24,8 @@ Go CLI (cobra)  →  subprocess  →  Python harness (anthropic SDK + custom loo
 | Config loader | `harness/config.py` | Load infrastructure YAML (model, opensearch), resolve env vars |
 | Session loader | `harness/session.py` | Load per-call session YAML (starting_context, max_turns) and build system prompt |
 | OpenSearch tool | `harness/tools.py` | `search_opensearch` + Anthropic tool schema + `dispatch` |
-| Runner | `harness/runner.py` | Custom Anthropic tool loop (messages.create + tool_result) |
+| Runner | `harness/runner.py` | `execute(config, session, input) -> str` tool loop + `run(...)` CLI wrapper |
 | Entry point | `harness/__main__.py` | argparse CLI — takes `-c` config, `-s` session, `-i` input |
-| Go CLI | `src/market-platform/cmd/agent/` | cobra wrapper calling `python -m harness` |
 
 ### Config vs. session split
 
@@ -88,16 +87,21 @@ Output formatting matches `server.go:96-99`.
 - `anthropic>=0.87.0` — official Anthropic Python SDK (pinned above CVE-2026-34450/34452)
 - `pyyaml>=6.0.2` — config parsing (always use `yaml.safe_load`)
 - `requests>=2.33.0` — raw HTTP to OpenSearch (no `opensearch-py`)
-- `spf13/cobra` — Go CLI framework (project standard)
 
 `litellm` and `openai-agents` were considered but dropped after the
 LiteLLM supply chain compromise (March 2026, CVE coverage of v1.82.7/8).
 Writing a ~30-line tool loop against the Anthropic SDK directly avoids
 both dependencies entirely. See
-`docs/security/dependency-analysis/spf13-cobra.md` for the Go deps review.
+`docs/security/dependency-analysis/python-harness-deps.md` for details.
 
 ## Future work
 
+- **HTTP API.** Wrap `harness.runner.execute` in a FastAPI (or Flask)
+  endpoint exposing `POST /run` with a `{starting_context, user_input,
+  max_turns}` body. The runner already takes in-memory objects, so this
+  is a small additive change (~40 lines + one dependency). A dedicated
+  CLI for interacting with the API should be added at that point as a
+  proper HTTP client — not a subprocess wrapper.
 - Resumable sessions: extend the session file to carry prior transcript and
   support `--resume` across multi-turn workflows
 - Additional tools: `get_listing`, `analyze_data`
