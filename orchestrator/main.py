@@ -5,6 +5,7 @@ for tool permissions. Python owns: queue, review gates, Linear sync, feedback lo
 """
 
 import argparse
+import logging
 import os
 import sys
 import time
@@ -24,6 +25,8 @@ SKILLS_DIR = ".claude/skills"
 LINEAR_POLL_INTERVAL_S = 60
 # How long to sleep between queue checks when we're idle.
 IDLE_SLEEP_S = 5
+
+log = logging.getLogger("orchestrator.main")
 
 
 def _validate_identity(identity: str) -> None:
@@ -197,10 +200,17 @@ def _run_review_loop(task: Task, result: dict) -> bool:
 
 def run_loop(identity: str):
     print(f"Orchestrator running as [{identity}]. Ctrl+C to pause.")
+    log.info(
+        "Linear poll interval=%ss, LINEAR_API_KEY set=%s, LINEAR_TEAM_ID=%s",
+        LINEAR_POLL_INTERVAL_S,
+        bool(os.environ.get("LINEAR_API_KEY")),
+        os.environ.get("LINEAR_TEAM_ID") or "(unset)",
+    )
     last_linear_poll = 0.0
     while True:
         now = time.monotonic()
         if now - last_linear_poll >= LINEAR_POLL_INTERVAL_S:
+            log.info("Polling Linear for new %s tasks...", identity)
             pull_from_linear(identity)
             last_linear_poll = now
 
@@ -276,7 +286,26 @@ def main():
             "Linear issues labeled `agent:<identity>`."
         ),
     )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="count",
+        default=0,
+        help="Increase log verbosity. -v for INFO, -vv for DEBUG.",
+    )
     args = parser.parse_args()
+
+    if args.verbose >= 2:
+        level = logging.DEBUG
+    elif args.verbose >= 1:
+        level = logging.INFO
+    else:
+        level = logging.WARNING
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)-5s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+        force=True,
+    )
 
     if args.seed:
         seed(args.seed, args.type)
