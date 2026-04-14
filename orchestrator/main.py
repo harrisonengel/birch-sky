@@ -7,6 +7,7 @@ for tool permissions. Python owns: queue, review gates, Linear sync, feedback lo
 import argparse
 import logging
 import os
+import re
 import sys
 import time
 from typing import Optional
@@ -27,7 +28,197 @@ LINEAR_POLL_INTERVAL_S = 60
 # How long to sleep between queue checks when we're idle.
 IDLE_SLEEP_S = 5
 
+APPROVAL_KEYWORDS = {"approved", "approve", "lgtm", "yes", "ship it", "ship"}
+
 log = logging.getLogger("orchestrator.main")
+
+
+def _format_approval_comment(task: Task, result: dict) -> str:
+    """Format the review comment posted to a Linear issue when approval is needed."""
+    lines = [
+        "## 🔒 Agent needs your approval\n",
+        f"**Task:** [{task.type.value}] {task.goal}\n",
+        f"**Session:** `{result.get('session_id', '?')[:8]}`\n",
+        "---\n",
+        "### Output summary\n",
+    ]
+
+    message = result.get("result", "") or "(no output)"
+    msg_lines = message.splitlines()
+    lines.append("\n".join(msg_lines[:80]))
+    if len(msg_lines) > 80:
+        lines.append(f"\n\n*… ({len(msg_lines) - 80} more lines — see full output in repo)*")
+
+    # Include proposed follow-ups if any
+    proposals = _parse_proposals(message)
+    if proposals:
+        lines.append("\n\n### Proposed follow-ups\n")
+        for i, (goal, task_type) in enumerate(proposals, 1):
+            lines.append(f"{i}. **[{task_type}]** {goal}")
+
+    lines.append("\n\n---")
+    lines.append("### How to respond")
+    lines.append(
+        "Reply with **approved** (or lgtm / yes / ship it) to accept, "
+        "or write feedback to request changes."
+    )
+    if proposals:
+        lines.append(
+            "To approve follow-ups, include which ones "
+            '(e.g. "approved. follow up on 1 and 3").'
+        )
+    lines.append("\nThen **move this ticket back to Todo**.")
+
+    return "\n".join(lines)
+
+
+def _request_linear_approval(task: Task, result: dict) -> None:
+    """Post approval request to Linear, move to Blocked, assign to approver."""
+    comment_body = _format_approval_comment(task, result)
+    comment_id = linear.add_comment(task.linear_issue_id, comment_body)
+
+    # Move to Blocked (fall back to In Review)
+    moved = linear.update_issue_status(task.linear_issue_id, "Blocked")
+    if not moved:
+        linear.update_issue_status(task.linear_issue_id, "In Review")
+
+    # Assign to the configured approver
+    assignee_id = os.environ.get("LINEAR_APPROVAL_ASSIGNEE_ID")
+    if assignee_id:
+        linear.assign_issue(task.linear_issue_id, assignee_id)
+
+    q.update(
+        task.id,
+        status=Status.REVIEW,
+        notes=f"Awaiting Linear approval (comment={comment_id})",
+    )
+    print(f"  Posted approval request to Linear. Waiting for response.")
+
+
+def _is_approval(text: str) -> bool:
+    """Check if a response is an approval keyword."""
+    normalized = text.strip().lower().rstrip(".!,")
+    # Check the first line only — rest may be proposal selections
+    first_line = normalized.split("\n")[0].strip()
+    return first_line in APPROVAL_KEYWORDS
+
+
+def _parse_proposal_selections(text: str) -> list[int]:
+    """Parse which proposals the human approved from their response.
+
+    Looks for patterns like 'follow up on 1 and 3', 'approve 1, 2',
+    'proposals: 1 3', etc. Returns 1-indexed proposal numbers.
+    """
+    numbers = re.findall(r"\b(\d+)\b", text)
+    return [int(n) for n in numbers]
+
+
+def _handle_linear_approval_response(
+    task: Task,
+    identity: str,
+    linear_approval: bool,
+) -> None:
+    """Process a human's Linear response for a REVIEW task that's back in Todo."""
+    comments = linear.fetch_issue_comments(task.linear_issue_id)
+    if not comments:
+        log.warning("No comments on issue for task %s — re-promoting as ready", task.id)
+        q.update(task.id, status=Status.READY, notes="No response found, retrying")
+        return
+
+    # The human's response is the latest comment
+    response = comments[-1]
+    response_text = response.get("body", "").strip()
+    log.info(
+        "Approval response for %s from %s: %s",
+        task.id,
+        (response.get("user") or {}).get("name", "?"),
+        response_text[:200],
+    )
+
+    if not response_text:
+        log.warning("Empty response for task %s — re-promoting", task.id)
+        q.update(task.id, status=Status.READY, notes="Empty response, retrying")
+        return
+
+    if _is_approval(response_text):
+        # Approved — mark done
+        print(f"  Approved via Linear: {task.goal}")
+        q.update(task.id, status=Status.DONE)
+        linear.update_issue_status(task.linear_issue_id, "Done")
+
+        # Handle proposal selections from the approval response
+        result_text = ""
+        if task.output_path and os.path.exists(task.output_path):
+            with open(task.output_path) as f:
+                result_text = f.read()
+        proposals = _parse_proposals(result_text)
+        if proposals:
+            selections = _parse_proposal_selections(response_text)
+            if selections:
+                _create_selected_proposals(proposals, selections, task, identity)
+            else:
+                # "approved" with no numbers — approve all proposals
+                _create_selected_proposals(
+                    proposals, list(range(1, len(proposals) + 1)), task, identity
+                )
+        return
+
+    # Not an approval — treat as feedback, resume session
+    if not task.session_id:
+        print(f"  No session to resume for {task.id} — blocking.")
+        q.update(task.id, status=Status.BLOCKED, notes="Feedback received but no session to resume")
+        return
+
+    print(f"  Resuming {task.session_id[:8]} with Linear feedback...")
+    result = claude_cli.resume_with_feedback(task.session_id, response_text)
+    if not result["ok"]:
+        print(f"  Resume failed: {result['error']}")
+        q.update(task.id, status=Status.BLOCKED, notes=f"Resume failed: {result['error']}")
+        return
+
+    out_path = claude_cli.save_result(task.id, result)
+    q.update(task.id, session_id=result["session_id"], output_path=out_path)
+    task.session_id = result["session_id"]
+    task.output_path = out_path
+
+    # Re-post for another round of approval
+    if task.linear_issue_id:
+        _request_linear_approval(task, result)
+    else:
+        # No Linear issue — fall back to blocking
+        q.update(task.id, status=Status.BLOCKED, notes="Feedback applied but no Linear issue for re-approval")
+
+
+def _create_selected_proposals(
+    proposals: list[tuple[str, str]],
+    selections: list[int],
+    parent_task: Task,
+    identity: str,
+) -> None:
+    """Create tasks for the selected proposals (1-indexed)."""
+    for idx in selections:
+        if idx < 1 or idx > len(proposals):
+            continue
+        goal, task_type = proposals[idx - 1]
+        try:
+            tt = TaskType(task_type)
+        except ValueError:
+            tt = TaskType.IMPLEMENT
+        new_task = Task(
+            goal=goal,
+            type=tt,
+            dependencies=[parent_task.id],
+            proposed_by=f"agent:{parent_task.id}",
+            authorized_by="human-linear",
+            status=Status.READY,
+            identity=identity,
+        )
+        q.add(new_task)
+        print(f"  Approved proposal: {new_task.id} — {goal}")
+        issue = linear.create_issue(new_task)
+        if issue:
+            q.update(new_task.id, linear_issue_id=issue["id"], linear_url=issue["url"])
+            print(f"  Linear: {issue['url']}")
 
 
 def _validate_identity(identity: str) -> None:
@@ -114,7 +305,7 @@ def _parse_proposals(text: str) -> list[tuple[str, str]]:
     return proposals
 
 
-def pull_from_linear(identity: str):
+def pull_from_linear(identity: str, *, linear_approval: bool = False):
     """Import any new Linear Todo issues labeled `agent:<identity>`.
 
     Imported tasks land as READY (not PENDING) — the Linear label *is* the
@@ -124,6 +315,9 @@ def pull_from_linear(identity: str):
     (typically because the human fixed whatever blocked it — granted
     permissions, edited the acceptance criteria, etc.), re-promote it to
     READY instead of importing a duplicate.
+
+    If a REVIEW task's issue is back in Todo, the human has responded to an
+    approval request. Read their response and handle accordingly.
     """
     issues = linear.fetch_todo_issues(identity)
     if not issues:
@@ -143,6 +337,12 @@ def pull_from_linear(identity: str):
                     f"Re-promoted from Linear [{identity}]: "
                     f"[{issue['identifier']}] {issue['title']}"
                 )
+            elif existing_task.status == Status.REVIEW and linear_approval:
+                print(
+                    f"Approval response from Linear [{identity}]: "
+                    f"[{issue['identifier']}] {issue['title']}"
+                )
+                _handle_linear_approval_response(existing_task, identity, linear_approval)
             continue
         new_task = Task(
             goal=issue["title"],
@@ -255,42 +455,50 @@ def _run_review_loop(task: Task, result: dict) -> bool:
     return False
 
 
-def run_loop(identity: str):
-    print(f"Orchestrator running as [{identity}]. Ctrl+C to pause.")
+def run_loop(identity: str, *, linear_approval: bool = False):
+    mode = "Linear-approval" if linear_approval else "CLI"
+    print(f"Orchestrator running as [{identity}] ({mode} mode). Ctrl+C to pause.")
     log.info(
-        "Linear poll interval=%ss, LINEAR_API_KEY set=%s, LINEAR_TEAM_ID=%s",
+        "Linear poll interval=%ss, LINEAR_API_KEY set=%s, LINEAR_TEAM_ID=%s, linear_approval=%s",
         LINEAR_POLL_INTERVAL_S,
         bool(os.environ.get("LINEAR_API_KEY")),
         os.environ.get("LINEAR_TEAM_ID") or "(unset)",
+        linear_approval,
     )
+    if linear_approval and not os.environ.get("LINEAR_APPROVAL_ASSIGNEE_ID"):
+        log.warning(
+            "LINEAR_APPROVAL_ASSIGNEE_ID not set — approval tickets won't be auto-assigned."
+        )
     last_linear_poll: Optional[float] = None
     while True:
         now = time.monotonic()
         if last_linear_poll is None or now - last_linear_poll >= LINEAR_POLL_INTERVAL_S:
             log.info("Polling Linear for new %s tasks...", identity)
-            pull_from_linear(identity)
+            pull_from_linear(identity, linear_approval=linear_approval)
             last_linear_poll = now
 
         # Triage any pending proposals first (scoped to this identity)
-        proposals = q.pending_proposals(identity)
-        if proposals:
-            print(f"\n{len(proposals)} pending proposal(s) need triage.")
-            for task in proposals:
-                print(f"\n[{task.type.value}] {task.goal}")
-                if task.notes:
-                    print(f"  Notes: {task.notes[:200]}")
-                resp = input("Approve? [y/n]: ").strip().lower()
-                if resp == "y":
-                    q.update(task.id, status=Status.READY, authorized_by="human")
-                    if not task.linear_issue_id:
-                        issue = linear.create_issue(task)
-                        if issue:
-                            q.update(
-                                task.id,
-                                linear_issue_id=issue["id"],
-                                linear_url=issue["url"],
-                            )
-                            print(f"  Linear: {issue['url']}")
+        if not linear_approval:
+            # In CLI mode, triage interactively as before
+            proposals = q.pending_proposals(identity)
+            if proposals:
+                print(f"\n{len(proposals)} pending proposal(s) need triage.")
+                for task in proposals:
+                    print(f"\n[{task.type.value}] {task.goal}")
+                    if task.notes:
+                        print(f"  Notes: {task.notes[:200]}")
+                    resp = input("Approve? [y/n]: ").strip().lower()
+                    if resp == "y":
+                        q.update(task.id, status=Status.READY, authorized_by="human")
+                        if not task.linear_issue_id:
+                            issue = linear.create_issue(task)
+                            if issue:
+                                q.update(
+                                    task.id,
+                                    linear_issue_id=issue["id"],
+                                    linear_url=issue["url"],
+                                )
+                                print(f"  Linear: {issue['url']}")
 
         task = q.get_next_ready(identity)
         if task is None:
@@ -310,16 +518,32 @@ def run_loop(identity: str):
             continue
 
         if task.type in ALWAYS_GATE:
-            approved = _run_review_loop(task, result)
-            if not approved:
-                q.update(task.id, status=Status.BLOCKED, notes="Human rejected output")
+            if linear_approval and task.linear_issue_id:
+                # Async approval via Linear — don't block
+                _request_linear_approval(task, result)
                 continue
+            else:
+                # CLI approval — blocks on input()
+                approved = _run_review_loop(task, result)
+                if not approved:
+                    q.update(task.id, status=Status.BLOCKED, notes="Human rejected output")
+                    continue
 
         q.update(task.id, status=Status.DONE)
         if task.linear_issue_id:
             linear.update_issue_status(task.linear_issue_id, "Done")
 
-        triage_proposals(result.get("result", ""), task, identity)
+        if linear_approval and task.linear_issue_id:
+            # In linear-approval mode, proposals are handled via the
+            # approval comment (included by _format_approval_comment for
+            # ALWAYS_GATE tasks) or auto-queued for non-gated tasks.
+            proposals = _parse_proposals(result.get("result", ""))
+            if proposals:
+                _create_selected_proposals(
+                    proposals, list(range(1, len(proposals) + 1)), task, identity
+                )
+        else:
+            triage_proposals(result.get("result", ""), task, identity)
         print(f"Done: {task.id}")
 
 
@@ -351,6 +575,18 @@ def main():
         ),
     )
     parser.add_argument(
+        "--linear-approval",
+        action="store_true",
+        default=False,
+        help=(
+            "Use Linear for approval instead of CLI input(). "
+            "When a task needs review, the orchestrator posts reasoning "
+            "to the Linear ticket, moves it to Blocked, and assigns it to "
+            "LINEAR_APPROVAL_ASSIGNEE_ID. Moving the ticket back to Todo "
+            "with a response comment continues the loop."
+        ),
+    )
+    parser.add_argument(
         "-v", "--verbose",
         action="count",
         default=0,
@@ -378,7 +614,7 @@ def main():
     if not args.identity:
         parser.error("--identity is required to run the execution loop")
     _validate_identity(args.identity)
-    run_loop(args.identity)
+    run_loop(args.identity, linear_approval=args.linear_approval)
 
 
 if __name__ == "__main__":

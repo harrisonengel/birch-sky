@@ -201,6 +201,73 @@ def fetch_todo_issues(identity: str) -> list[dict]:
         return []
 
 
+_ADD_COMMENT = """
+mutation($issueId: String!, $body: String!) {
+  commentCreate(input: { issueId: $issueId, body: $body }) {
+    success
+    comment { id createdAt }
+  }
+}
+"""
+
+
+def add_comment(issue_id: str, body: str) -> Optional[str]:
+    """Add a comment to a Linear issue. Returns comment ID or None on failure."""
+    if not _enabled() or not issue_id:
+        return None
+    try:
+        data = _gql(_ADD_COMMENT, {"issueId": issue_id, "body": body})
+        comment = data["data"]["commentCreate"]["comment"]
+        return comment["id"]
+    except Exception as e:
+        print(f"  Linear add_comment failed: {e}", file=sys.stderr)
+        return None
+
+
+_ASSIGN_ISSUE = """
+mutation($id: String!, $assigneeId: String) {
+  issueUpdate(id: $id, input: { assigneeId: $assigneeId }) {
+    success
+  }
+}
+"""
+
+
+def assign_issue(issue_id: str, assignee_id: str) -> bool:
+    """Assign a Linear issue to a user by their Linear user ID."""
+    if not _enabled() or not issue_id:
+        return False
+    try:
+        data = _gql(_ASSIGN_ISSUE, {"id": issue_id, "assigneeId": assignee_id})
+        return data["data"]["issueUpdate"]["success"]
+    except Exception as e:
+        print(f"  Linear assign_issue failed: {e}", file=sys.stderr)
+        return False
+
+
+_GET_COMMENTS = """
+query($issueId: String!) {
+  issue(id: $issueId) {
+    comments(orderBy: createdAt) {
+      nodes { id body createdAt user { id name } }
+    }
+  }
+}
+"""
+
+
+def fetch_issue_comments(issue_id: str) -> list[dict]:
+    """Fetch comments on a Linear issue, oldest first."""
+    if not _enabled() or not issue_id:
+        return []
+    try:
+        data = _gql(_GET_COMMENTS, {"issueId": issue_id})
+        return data["data"]["issue"]["comments"]["nodes"]
+    except Exception as e:
+        print(f"  Linear fetch_issue_comments failed: {e}", file=sys.stderr)
+        return []
+
+
 def _diagnose_missing(expected_label: str) -> None:
     """When the filtered query returned nothing, dump a snapshot of the team's
     issues so the user can see *why* — wrong state name, wrong label, or
