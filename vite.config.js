@@ -14,6 +14,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/agent/, '/api'),
       },
+      '/api/prepper': {
+        target: 'http://localhost:8002',
+        changeOrigin: true,
+      },
     },
   },
 });
