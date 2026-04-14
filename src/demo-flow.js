@@ -1,6 +1,6 @@
 import { MOCK_RESULTS, generateBuyRequest } from './mock-data.js';
 import {
-  searchMarketplace,
+  enterMarketplace,
   initiatePurchase,
   confirmPurchase,
   createBuyOrder,
@@ -46,9 +46,9 @@ function getBuyerID() {
 }
 
 // Try the real backend; return null on failure so we can fall back.
-async function searchBackend(query) {
+async function enterBackend(query) {
   try {
-    const resp = await searchMarketplace(query);
+    const resp = await enterMarketplace(query);
     if (resp && resp.results && resp.results.length > 0) {
       return resp.results.map((r) => ({
         id: r.listing_id,
@@ -104,7 +104,7 @@ export function initDemoFlow(scene, chat) {
     // Try real backend first (unless forced to no-results)
     let results = null;
     if (forcedPath !== 'no-results') {
-      results = await searchBackend(query);
+      results = await enterBackend(query);
       if (results === null) {
         // Backend unreachable — use mock data
         if (backendAvailable === null) {

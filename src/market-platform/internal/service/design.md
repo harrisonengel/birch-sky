@@ -14,6 +14,6 @@ Business logic orchestration layer. Services coordinate between repositories, ex
 | Service | Responsibility |
 |---------|---------------|
 | `ListingService` | CRUD, file upload, triggers search indexing |
-| `SearchService` | Hybrid search orchestration (text + vector + RRF fusion) |
+| `EnterService` | Hybrid search orchestration (text + vector + RRF fusion) |
 | `PurchaseService` | Payment initiation, confirmation, ownership management |
 | `BuyOrderService` | Buy order lifecycle (create, fill, cancel) |

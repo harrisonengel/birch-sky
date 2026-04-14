@@ -10,7 +10,7 @@ SSE (Server-Sent Events) on port 8081, using `github.com/mark3labs/mcp-go`.
 
 | Tool | Purpose |
 |------|---------|
-| `search_marketplace` | Natural language search with optional category/price filters |
+| `enter_marketplace` | Enter the exchange with a natural language query and optional category/price filters |
 | `get_listing` | Full public metadata for a listing by ID |
 | `analyze_data` | AI-powered data analysis without revealing raw data |
 

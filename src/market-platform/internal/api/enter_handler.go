@@ -6,25 +6,25 @@ import (
 	"github.com/harrisonengel/birch-sky/src/market-platform/internal/service"
 )
 
-type SearchHandler struct {
-	svc *service.SearchService
+type EnterHandler struct {
+	svc *service.EnterService
 }
 
-func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
-	var req SearchRequest
+func (h *EnterHandler) Enter(w http.ResponseWriter, r *http.Request) {
+	var req EnterRequest
 	if err := decodeJSON(r, &req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if err := validateSearchRequest(&req); err != nil {
+	if err := validateEnterRequest(&req); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	resp, err := h.svc.Search(r.Context(), req)
+	resp, err := h.svc.Enter(r.Context(), req)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, http.StatusOK, SearchResponse(*resp))
+	respondJSON(w, http.StatusOK, EnterResponse(*resp))
 }

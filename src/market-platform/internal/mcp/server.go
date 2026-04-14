@@ -19,28 +19,28 @@ type DataAnalyzer interface {
 
 // toolDeps holds shared dependencies for tool handlers.
 type toolDeps struct {
-	searchSvc   *service.SearchService
+	enterSvc    *service.EnterService
 	listingRepo *postgres.ListingRepo
 	analyzer    DataAnalyzer
 	objStore    objectstore.ObjectStore
 	bucket      string
 }
 
-func Serve(addr string, searchSvc *service.SearchService, listingRepo *postgres.ListingRepo, analyzer DataAnalyzer, objStore objectstore.ObjectStore, bucket string) error {
+func Serve(addr string, enterSvc *service.EnterService, listingRepo *postgres.ListingRepo, analyzer DataAnalyzer, objStore objectstore.ObjectStore, bucket string) error {
 	s := mcpsdk.NewServer(&mcpsdk.Implementation{
 		Name:    "Information Exchange Market Platform",
 		Version: "1.0.0",
 	}, nil)
 
 	deps := &toolDeps{
-		searchSvc:   searchSvc,
+		enterSvc:    enterSvc,
 		listingRepo: listingRepo,
 		analyzer:    analyzer,
 		objStore:    objStore,
 		bucket:      bucket,
 	}
 
-	registerSearchTool(s, deps)
+	registerEnterTool(s, deps)
 	registerGetListingTool(s, deps)
 	registerAnalyzeDataTool(s, deps)
 
@@ -50,45 +50,45 @@ func Serve(addr string, searchSvc *service.SearchService, listingRepo *postgres.
 	return http.ListenAndServe(addr, handler)
 }
 
-// --- search_marketplace ---
+// --- enter_marketplace ---
 
-type SearchInput struct {
-	Query         string  `json:"query" jsonschema:"Natural language search query"`
+type EnterInput struct {
+	Query         string  `json:"query" jsonschema:"Natural language query"`
 	Category      *string `json:"category,omitempty" jsonschema:"Filter by category"`
 	MaxPriceCents *int    `json:"max_price_cents,omitempty" jsonschema:"Maximum price in cents"`
 }
 
-type SearchOutput struct {
+type EnterOutput struct {
 	Text string `json:"text"`
 }
 
-func registerSearchTool(s *mcpsdk.Server, deps *toolDeps) {
+func registerEnterTool(s *mcpsdk.Server, deps *toolDeps) {
 	mcpsdk.AddTool(s, &mcpsdk.Tool{
-		Name:        "search_marketplace",
-		Description: "Search the Information Exchange marketplace for data listings using natural language. Returns matching listings ranked by relevance.",
-	}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input SearchInput) (*mcpsdk.CallToolResult, SearchOutput, error) {
+		Name:        "enter_marketplace",
+		Description: "Enter the Information Exchange marketplace to find data listings using natural language. Returns matching listings ranked by relevance.",
+	}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input EnterInput) (*mcpsdk.CallToolResult, EnterOutput, error) {
 		if input.Query == "" {
 			result := &mcpsdk.CallToolResult{}
 			result.SetError(fmt.Errorf("query is required"))
-			return result, SearchOutput{}, nil
+			return result, EnterOutput{}, nil
 		}
 
-		searchReq := service.SearchRequest{
+		enterReq := service.EnterRequest{
 			Query: input.Query,
 			Mode:  "hybrid",
 		}
 		if input.Category != nil {
-			searchReq.Category = *input.Category
+			enterReq.Category = *input.Category
 		}
 		if input.MaxPriceCents != nil {
-			searchReq.MaxPriceCents = input.MaxPriceCents
+			enterReq.MaxPriceCents = input.MaxPriceCents
 		}
 
-		resp, err := deps.searchSvc.Search(ctx, searchReq)
+		resp, err := deps.enterSvc.Enter(ctx, enterReq)
 		if err != nil {
 			result := &mcpsdk.CallToolResult{}
-			result.SetError(fmt.Errorf("search failed: %v", err))
-			return result, SearchOutput{}, nil
+			result.SetError(fmt.Errorf("enter failed: %v", err))
+			return result, EnterOutput{}, nil
 		}
 
 		var sb strings.Builder
@@ -106,7 +106,7 @@ func registerSearchTool(s *mcpsdk.Server, deps *toolDeps) {
 		text := sb.String()
 		return &mcpsdk.CallToolResult{
 			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: text}},
-		}, SearchOutput{Text: text}, nil
+		}, EnterOutput{Text: text}, nil
 	})
 }
 

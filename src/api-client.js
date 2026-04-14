@@ -27,12 +27,12 @@ async function get(url) {
 }
 
 /**
- * Search the marketplace for data listings.
- * @param {string} query - Natural language search query
+ * Enter the marketplace to find data listings.
+ * @param {string} query - Natural language query
  * @returns {Promise<{results: Array, total: number, mode: string}>}
  */
-export async function searchMarketplace(query) {
-  return post(`${API_BASE}/search`, {
+export async function enterMarketplace(query) {
+  return post(`${API_BASE}/enter`, {
     query,
     mode: 'text',
     per_page: 10,
