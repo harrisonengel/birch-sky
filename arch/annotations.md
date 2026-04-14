@@ -22,6 +22,13 @@ _Last updated: 2026-04-07. Maintained by architect agent + humans._
 - **Costs**: unknown
 - **Notes**: Planned only — `src/market-platform/` directory does not exist yet. Detailed implementation spec at `docs/specs/market-platform/market-platform-service.md`. Stack: Go + chi v5, Postgres 16, OpenSearch 3.x (text + kNN vector), MinIO, Stripe test mode, AWS Bedrock Titan v2 embeddings (1024-dim), Claude API for `analyze_data`, REST + MCP/SSE on :8081. Hybrid search (BM25F + kNN, RRF fusion) is intentional from day one — search quality is the product.
 
+
+### audit_events
+- **QPS**: unknown
+- **SLA**: unknown
+- **Costs**: unknown
+- **Notes**: Planned append-only audit_events table in existing Postgres 16. Stores structured events for dispute resolution, trust engine seeding, and sandbox integrity. Spec at specs/features/audit-log/audit-log-design.md. 16 event types across 7 categories. Market platform writes synchronously; buyer agent platform writes agent sandbox events (protocol TBD).
+
 ## Cross-cutting Constraints
 
 - **Three-tier boundary**: end users never call market_platform directly. Path is `web_frontend → buyers_agent_platform → market_platform`. The purchase flow is documented as an exception (frontend → market_platform direct) since payment doesn't need to traverse the agent.
@@ -39,3 +46,4 @@ _Last updated: 2026-04-07. Maintained by architect agent + humans._
 ## Decision Log
 
 - **2026-04-07** — Bootstrapped architecture layer. Current state: only `web_frontend` (Vite demo with mock data) physically exists. All backend nodes are inferred from `docs/plans/mvp_architecture.md` and `docs/specs/market-platform/` and marked `confidence: low`. They should be promoted to `high` as code lands.
+- **2026-04-13** -- Added audit_events datastore node and spec. 16 event types, Postgres schema, sync write path, query API, CLI. See specs/features/audit-log/audit-log-design.md.
