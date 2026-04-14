@@ -1,6 +1,7 @@
 // Command iecli is the operator CLI for the Information Exchange market
-// platform. It talks to the running HTTP API — it does not connect to
-// databases directly.
+// platform. It talks to the running HTTP API for seeding and searching,
+// and connects to Postgres directly for structured SQL queries against
+// sample dataset tables.
 package main
 
 import (
@@ -17,6 +18,7 @@ import (
 )
 
 var apiBase string
+var databaseURL string
 
 func main() {
 	root := &cobra.Command{
@@ -24,13 +26,25 @@ func main() {
 		Short: "Information Exchange CLI",
 	}
 	root.PersistentFlags().StringVar(&apiBase, "api", "http://localhost:8080", "market-platform base URL")
+	root.PersistentFlags().StringVar(&databaseURL, "database-url", "", "Postgres connection string (default: $DATABASE_URL or local docker)")
 
 	root.AddCommand(seedCmd())
 	root.AddCommand(searchCmd())
+	root.AddCommand(queryCmd)
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+func getDatabaseURL() string {
+	if databaseURL != "" {
+		return databaseURL
+	}
+	if v := os.Getenv("DATABASE_URL"); v != "" {
+		return v
+	}
+	return "postgres://ieuser:iepass@localhost:5432/iemarket?sslmode=disable"
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +258,12 @@ func runSeed(cmd *cobra.Command, args []string) error {
 				fmt.Printf("    -> uploaded %d bytes CSV\n", len(l.DataCSV))
 			}
 		}
+	}
+
+	// Seed structured sample dataset tables directly in Postgres.
+	fmt.Println("\nSeeding sample dataset tables...")
+	if err := seedSampleDatasets(); err != nil {
+		return fmt.Errorf("seed sample datasets: %w", err)
 	}
 
 	fmt.Println("\nSeed complete!")
