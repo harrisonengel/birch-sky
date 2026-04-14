@@ -50,6 +50,56 @@ services:
       timeout: 3s
       retries: 5
 
+  market-platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    environment:
+      DATABASE_URL: postgres://ieuser:iepass@postgres:5432/iemarket?sslmode=disable
+      OPENSEARCH_URL: http://opensearch:9200
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET: market-data
+      MINIO_USE_SSL: "false"
+      HTTP_PORT: "8080"
+      MCP_PORT: "8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  agent-harness:
+    build:
+      context: ../../harness
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX: listings
+      MODEL_NAME: claude-sonnet-4-5
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
 volumes:
   pgdata:
   osdata:

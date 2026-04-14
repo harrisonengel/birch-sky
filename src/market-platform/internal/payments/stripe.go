@@ -20,6 +20,26 @@ func NewStripeProcessor(apiKey string) *StripeProcessor {
 	return &StripeProcessor{}
 }
 
+// StubProcessor auto-succeeds all payment operations. Used in dev/demo
+// when no STRIPE_SECRET_KEY is configured.
+type StubProcessor struct {
+	nextID int
+}
+
+func NewStubProcessor() *StubProcessor {
+	return &StubProcessor{}
+}
+
+func (p *StubProcessor) CreatePaymentIntent(_ context.Context, amountCents int, currency string) (string, string, error) {
+	p.nextID++
+	paymentID := fmt.Sprintf("stub_pi_%d", p.nextID)
+	return "stub_secret_" + paymentID, paymentID, nil
+}
+
+func (p *StubProcessor) ConfirmPayment(_ context.Context, paymentID string) error {
+	return nil // always succeeds
+}
+
 func (p *StripeProcessor) CreatePaymentIntent(_ context.Context, amountCents int, currency string) (string, string, error) {
 	params := &stripe.PaymentIntentParams{
 		Amount:   stripe.Int64(int64(amountCents)),

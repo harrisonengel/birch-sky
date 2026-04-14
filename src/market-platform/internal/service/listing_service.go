@@ -90,7 +90,7 @@ func (s *ListingService) CreateListing(ctx context.Context, in CreateListingInpu
 	}
 
 	// Index in OpenSearch (no data file yet, so no content_text)
-	if err := s.indexer.IndexListing(ctx, created, nil, ""); err != nil {
+	if err := s.indexer.IndexListing(ctx, created, nil, "", seller.Name); err != nil {
 		// Log but don't fail the creation
 		fmt.Printf("warning: failed to index listing %s: %v\n", created.ID, err)
 	}
