@@ -1,0 +1,94 @@
+# Monitoring stack for the IE MVP.
+#
+# Usage:
+#   1. Start the application stack first:
+#        cd src/market-platform && docker compose up -d
+#   2. Then start the monitoring stack:
+#        cd monitoring && docker compose up -d
+#   3. Open Grafana at http://localhost:3000 (admin / admin)
+#
+# This compose file joins the market-platform network so that
+# Prometheus and exporters can reach the application services
+# (postgres, opensearch, minio, market-platform, agent-harness)
+# by their service names.
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    networks:
+      - monitoring
+      - market-platform_default
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/ie-mvp-overview.json
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    volumes:
+      - ./blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    ports:
+      - "9115:9115"
+    networks:
+      - monitoring
+      - market-platform_default
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    environment:
+      DATA_SOURCE_NAME: "postgresql://ieuser:iepass@postgres:5432/iemarket?sslmode=disable"
+    ports:
+      - "9187:9187"
+    networks:
+      - monitoring
+      - market-platform_default
+    restart: unless-stopped
+
+  opensearch-exporter:
+    image: prometheuscommunity/elasticsearch-exporter:v1.7.0
+    command:
+      - "--es.uri=http://opensearch:9200"
+      - "--es.all"
+      - "--es.indices"
+      - "--es.shards"
+    ports:
+      - "9114:9114"
+    networks:
+      - monitoring
+      - market-platform_default
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  monitoring:
+    driver: bridge
+  market-platform_default:
+    external: true

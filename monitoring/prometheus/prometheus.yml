@@ -1,0 +1,63 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # ---------------------------------------------------------------------------
+  # Prometheus self-monitoring
+  # ---------------------------------------------------------------------------
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # ---------------------------------------------------------------------------
+  # Blackbox probes — HTTP health checks for every service
+  # ---------------------------------------------------------------------------
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://market-platform:8080/health
+          - http://market-platform:8080/ready
+          - http://agent-harness:8000/health
+          - http://opensearch:9200/_cluster/health
+          - http://minio:9000/minio/health/live
+        labels:
+          group: ie-mvp
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+      # Extract a readable service name from the target URL
+      - source_labels: [__param_target]
+        regex: "https?://([^:/]+).*"
+        target_label: service
+        replacement: "$1"
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL via postgres_exporter
+  # ---------------------------------------------------------------------------
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  # ---------------------------------------------------------------------------
+  # MinIO built-in Prometheus metrics
+  # ---------------------------------------------------------------------------
+  - job_name: minio
+    metrics_path: /minio/v2/metrics/cluster
+    scheme: http
+    static_configs:
+      - targets: ["minio:9000"]
+
+  # ---------------------------------------------------------------------------
+  # OpenSearch via opensearch-exporter
+  # ---------------------------------------------------------------------------
+  - job_name: opensearch
+    static_configs:
+      - targets: ["opensearch-exporter:9114"]
