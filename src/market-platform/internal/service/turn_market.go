@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 
@@ -10,7 +11,7 @@ import (
 
 type TurnMarketService struct {
 	engine   search.SearchEngine
-	embedder search.Embedder
+	embedder search.Embedder // optional; only consulted when the engine is not in pipeline mode
 }
 
 func NewTurnMarketService(engine search.SearchEngine, embedder search.Embedder) *TurnMarketService {
@@ -55,11 +56,7 @@ func (s *TurnMarketService) Enter(ctx context.Context, req EnterRequest) (*Enter
 		return &EnterResponse{Results: results, Total: len(results), Mode: mode}, nil
 
 	case "vector":
-		embedding, err := s.embedder.Embed(ctx, req.Query)
-		if err != nil {
-			return nil, err
-		}
-		results, err := s.engine.VectorSearch(ctx, embedding, filters, size)
+		results, err := s.semanticSearch(ctx, req.Query, filters, size)
 		if err != nil {
 			return nil, err
 		}
@@ -70,13 +67,23 @@ func (s *TurnMarketService) Enter(ctx context.Context, req EnterRequest) (*Enter
 	}
 }
 
-func (s *TurnMarketService) hybridEnter(ctx context.Context, query string, filters search.SearchFilters, size int) (*EnterResponse, error) {
-	// Get embedding for vector search
+// semanticSearch picks the right vector path: server-side neural query
+// when the engine has an ML pipeline, client-side embed+kNN otherwise.
+func (s *TurnMarketService) semanticSearch(ctx context.Context, query string, filters search.SearchFilters, size int) ([]search.SearchResult, error) {
+	if s.engine.PipelineMode() {
+		return s.engine.SemanticSearch(ctx, query, filters, size)
+	}
+	if s.embedder == nil {
+		return nil, fmt.Errorf("vector search not configured: no ML pipeline and no embedder")
+	}
 	embedding, err := s.embedder.Embed(ctx, query)
 	if err != nil {
 		return nil, err
 	}
+	return s.engine.VectorSearch(ctx, embedding, filters, size)
+}
 
+func (s *TurnMarketService) hybridEnter(ctx context.Context, query string, filters search.SearchFilters, size int) (*EnterResponse, error) {
 	// Issue text and vector searches in parallel
 	var textResults, vectorResults []search.SearchResult
 	var textErr, vectorErr error
@@ -89,7 +96,7 @@ func (s *TurnMarketService) hybridEnter(ctx context.Context, query string, filte
 	}()
 	go func() {
 		defer wg.Done()
-		vectorResults, vectorErr = s.engine.VectorSearch(ctx, embedding, filters, size)
+		vectorResults, vectorErr = s.semanticSearch(ctx, query, filters, size)
 	}()
 	wg.Wait()
 

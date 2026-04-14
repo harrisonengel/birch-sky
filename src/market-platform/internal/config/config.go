@@ -19,6 +19,16 @@ type Config struct {
 	AWSRegion      string
 	HTTPPort       int
 	MCPPort        int
+
+	// EmbeddingMode selects the embedding backend. Values:
+	//   - "opensearch" (default): bootstrap a pre-trained sentence
+	//     transformer in OpenSearch ML Commons and embed via an
+	//     ingest pipeline + neural query. No external API calls.
+	//   - "bedrock": call AWS Bedrock Titan v2 from the application.
+	//     Requires AWS_REGION + AWS credentials in env.
+	//   - "local": use the deterministic hash pseudo-embedder. Only
+	//     useful for unit tests where semantic quality doesn't matter.
+	EmbeddingMode string
 }
 
 func Load() (*Config, error) {
@@ -44,6 +54,7 @@ func Load() (*Config, error) {
 		AWSRegion:      envOrDefault("AWS_REGION", ""),
 		HTTPPort:       httpPort,
 		MCPPort:        mcpPort,
+		EmbeddingMode:  envOrDefault("EMBEDDING_MODE", "opensearch"),
 	}, nil
 }
 

@@ -11,34 +11,59 @@ import (
 )
 
 type SearchFilters struct {
-	Category     string
-	Status       string
+	Category      string
+	Status        string
 	MaxPriceCents *int
 }
 
 type SearchResult struct {
-	ListingID  string  `json:"listing_id"`
-	Score      float64 `json:"score"`
-	Title      string  `json:"title"`
-	Description string `json:"description"`
-	Category   string  `json:"category"`
-	PriceCents int     `json:"price_cents"`
-	SellerName string  `json:"seller_name"`
+	ListingID   string  `json:"listing_id"`
+	Score       float64 `json:"score"`
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Category    string  `json:"category"`
+	PriceCents  int     `json:"price_cents"`
+	SellerName  string  `json:"seller_name"`
 }
 
+// SearchEngine is the abstract index/search surface used by the
+// service layer. Implementations may handle embedding either
+// client-side (passing pre-computed vectors via IndexListing) or
+// server-side (via an OpenSearch ingest pipeline + neural query).
 type SearchEngine interface {
 	EnsureIndex(ctx context.Context) error
 	IndexListing(ctx context.Context, listingID, title, description, category, status string, priceCents int, tags string, contentText string, embedding []float64, sellerName string) error
 	DeleteListing(ctx context.Context, listingID string) error
 	TextSearch(ctx context.Context, query string, filters SearchFilters, size int) ([]SearchResult, error)
 	VectorSearch(ctx context.Context, embedding []float64, filters SearchFilters, size int) ([]SearchResult, error)
+	// SemanticSearch runs a vector-space search from raw text. Engines
+	// in pipeline mode use OpenSearch's neural query (server embeds
+	// the query text); engines without a model fall back to embedding
+	// the query externally — but that fallback is the caller's job
+	// (the service can still call VectorSearch directly with a
+	// pre-computed vector). When pipeline mode is disabled this
+	// returns ErrNoSemanticSearch.
+	SemanticSearch(ctx context.Context, queryText string, filters SearchFilters, size int) ([]SearchResult, error)
+	// PipelineMode reports whether server-side embeddings are wired
+	// up. Callers (e.g. Indexer, TurnMarketService) use this to
+	// decide whether to compute embeddings client-side.
+	PipelineMode() bool
 }
+
+// ErrNoSemanticSearch is returned by SemanticSearch on engines that
+// don't have an OpenSearch ML pipeline configured.
+var ErrNoSemanticSearch = fmt.Errorf("semantic search not configured: no ML pipeline model id")
 
 type OpenSearchEngine struct {
 	baseURL    string
 	httpClient *http.Client
+	ml         *MLClient // optional; non-nil enables server-side embeddings
 }
 
+// NewOpenSearchEngine creates a basic engine. The caller is
+// responsible for either calling EnsureIndex (which will set up the
+// index with no ingest pipeline) or first calling EnableMLPipeline to
+// bootstrap the OpenSearch ML pipeline.
 func NewOpenSearchEngine(baseURL string) (*OpenSearchEngine, error) {
 	return &OpenSearchEngine{
 		baseURL:    strings.TrimRight(baseURL, "/"),
@@ -46,7 +71,38 @@ func NewOpenSearchEngine(baseURL string) (*OpenSearchEngine, error) {
 	}, nil
 }
 
+// EnableMLPipeline boots the ML Commons setup (model + ingest
+// pipeline) and tells the engine to rely on server-side embeddings
+// from now on. Idempotent — safe to call again on warm clusters.
+func (e *OpenSearchEngine) EnableMLPipeline(ctx context.Context) error {
+	ml := NewMLClient(e.baseURL)
+	if err := ml.SetupModel(ctx); err != nil {
+		return err
+	}
+	e.ml = ml
+	return nil
+}
+
+// PipelineMode reports whether server-side embeddings are configured.
+func (e *OpenSearchEngine) PipelineMode() bool {
+	return e.ml != nil && e.ml.ModelID() != ""
+}
+
+// MLModelID returns the id of the deployed embedding model, or "" if
+// pipeline mode is off. Useful for diagnostics / CLI status output.
+func (e *OpenSearchEngine) MLModelID() string {
+	if e.ml == nil {
+		return ""
+	}
+	return e.ml.ModelID()
+}
+
 func (e *OpenSearchEngine) EnsureIndex(ctx context.Context) error {
+	pipeline := ""
+	if e.PipelineMode() {
+		pipeline = MLPipelineName
+	}
+
 	// Check if index exists
 	req, _ := http.NewRequestWithContext(ctx, "HEAD", e.baseURL+"/"+IndexName, nil)
 	resp, err := e.httpClient.Do(req)
@@ -59,8 +115,7 @@ func (e *OpenSearchEngine) EnsureIndex(ctx context.Context) error {
 		return nil // index exists
 	}
 
-	// Create index
-	body, _ := json.Marshal(IndexMapping)
+	body, _ := json.Marshal(IndexMappingFor(pipeline))
 	req, _ = http.NewRequestWithContext(ctx, "PUT", e.baseURL+"/"+IndexName, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err = e.httpClient.Do(req)
@@ -76,18 +131,31 @@ func (e *OpenSearchEngine) EnsureIndex(ctx context.Context) error {
 	return nil
 }
 
+// IndexListing writes a document. In pipeline mode the embedding
+// argument is ignored (and may be nil) — the OpenSearch ingest
+// pipeline computes the vector from the embedding_text field. In
+// non-pipeline (client-side) mode, the caller must pass a
+// pre-computed embedding of length EmbeddingDimension.
 func (e *OpenSearchEngine) IndexListing(ctx context.Context, listingID, title, description, category, status string, priceCents int, tags string, contentText string, embedding []float64, sellerName string) error {
 	doc := map[string]interface{}{
-		"listing_id":   listingID,
-		"title":        title,
-		"description":  description,
-		"category":     category,
-		"status":       status,
-		"price_cents":  priceCents,
-		"tags":         tags,
+		"listing_id":  listingID,
+		"title":       title,
+		"description": description,
+		"category":    category,
+		"status":      status,
+		"price_cents": priceCents,
+		"tags":        tags,
 		"content_text": contentText,
-		"embedding":    embedding,
-		"seller_name":  sellerName,
+		"seller_name": sellerName,
+	}
+
+	if e.PipelineMode() {
+		// Hand raw text to the pipeline. Joining all fields keeps
+		// the embedding aligned with the same content the BM25 side
+		// matches against, which improves hybrid fusion quality.
+		doc[MLEmbeddingTextField] = strings.Join([]string{title, description, tags, contentText}, " ")
+	} else {
+		doc[MLEmbeddingField] = embedding
 	}
 
 	body, _ := json.Marshal(doc)
@@ -164,9 +232,44 @@ func (e *OpenSearchEngine) VectorSearch(ctx context.Context, embedding []float64
 				"must": []interface{}{
 					map[string]interface{}{
 						"knn": map[string]interface{}{
-							"embedding": map[string]interface{}{
+							MLEmbeddingField: map[string]interface{}{
 								"vector": embedding,
 								"k":      size,
+							},
+						},
+					},
+				},
+				"filter": buildFilters(filters),
+			},
+		},
+	}
+
+	return e.executeSearch(ctx, searchQuery)
+}
+
+// SemanticSearch issues a `neural` query that asks OpenSearch to embed
+// the query text with the deployed model and run kNN against
+// MLEmbeddingField. Returns ErrNoSemanticSearch if the engine isn't in
+// pipeline mode.
+func (e *OpenSearchEngine) SemanticSearch(ctx context.Context, queryText string, filters SearchFilters, size int) ([]SearchResult, error) {
+	if !e.PipelineMode() {
+		return nil, ErrNoSemanticSearch
+	}
+	if size <= 0 {
+		size = 20
+	}
+
+	searchQuery := map[string]interface{}{
+		"size": size,
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": []interface{}{
+					map[string]interface{}{
+						"neural": map[string]interface{}{
+							MLEmbeddingField: map[string]interface{}{
+								"query_text": queryText,
+								"model_id":   e.ml.ModelID(),
+								"k":          size,
 							},
 						},
 					},
@@ -242,13 +345,13 @@ func (e *OpenSearchEngine) executeSearch(ctx context.Context, searchQuery map[st
 	results := make([]SearchResult, 0, len(osResp.Hits.Hits))
 	for _, hit := range osResp.Hits.Hits {
 		r := SearchResult{
-			ListingID:  getString(hit.Source, "listing_id"),
-			Score:      hit.Score,
-			Title:      getString(hit.Source, "title"),
+			ListingID:   getString(hit.Source, "listing_id"),
+			Score:       hit.Score,
+			Title:       getString(hit.Source, "title"),
 			Description: getString(hit.Source, "description"),
-			Category:   getString(hit.Source, "category"),
-			PriceCents: getInt(hit.Source, "price_cents"),
-			SellerName: getString(hit.Source, "seller_name"),
+			Category:    getString(hit.Source, "category"),
+			PriceCents:  getInt(hit.Source, "price_cents"),
+			SellerName:  getString(hit.Source, "seller_name"),
 		}
 		results = append(results, r)
 	}

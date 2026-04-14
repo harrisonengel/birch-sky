@@ -85,21 +85,44 @@ func main() {
 	}
 
 	// Search
-	var embedder search.Embedder
-	if cfg.HasBedrock() {
-		embedder, err = search.NewBedrockEmbedder(cfg.AWSRegion)
-		if err != nil {
-			log.Fatalf("bedrock embedder: %v", err)
-		}
-	} else {
-		embedder = search.NewLocalEmbedder()
-		log.Println("using local embedder (no AWS credentials configured)")
-	}
-
 	searchEngine, err := search.NewOpenSearchEngine(cfg.OpenSearchURL)
 	if err != nil {
 		log.Fatalf("opensearch: %v", err)
 	}
+
+	// Pick the embedding backend. Default: OpenSearch ML Commons (an
+	// ingest pipeline runs a pre-trained sentence transformer
+	// server-side, so the application doesn't need to call any
+	// external embedding API for the demo / low-volume path). Falls
+	// back to Bedrock or the deterministic local embedder if the
+	// operator opts in via EMBEDDING_MODE.
+	var embedder search.Embedder
+	mode := cfg.EmbeddingMode
+	if mode == "bedrock" && !cfg.HasBedrock() {
+		log.Println("EMBEDDING_MODE=bedrock but AWS_REGION is unset; falling back to opensearch")
+		mode = "opensearch"
+	}
+	switch mode {
+	case "bedrock":
+		embedder, err = search.NewBedrockEmbedder(cfg.AWSRegion)
+		if err != nil {
+			log.Fatalf("bedrock embedder: %v", err)
+		}
+		log.Println("embeddings: AWS Bedrock Titan v2 (client-side)")
+	case "local":
+		embedder = search.NewLocalEmbedder()
+		log.Println("embeddings: deterministic local hash (test only — not semantic)")
+	default: // "opensearch"
+		log.Printf("embeddings: bootstrapping OpenSearch ML pipeline (%s)…", search.MLModelName)
+		setupCtx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
+		if err := searchEngine.EnableMLPipeline(setupCtx); err != nil {
+			cancel()
+			log.Fatalf("opensearch ml pipeline: %v", err)
+		}
+		cancel()
+		log.Printf("embeddings: OpenSearch ingest pipeline (model_id=%s)", searchEngine.MLModelID())
+	}
+
 	if err := searchEngine.EnsureIndex(context.Background()); err != nil {
 		log.Fatalf("opensearch index: %v", err)
 	}
