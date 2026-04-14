@@ -4,6 +4,8 @@ import {
   initiatePurchase,
   confirmPurchase,
   createBuyOrder,
+  startPrepper,
+  respondPrepper,
 } from './api-client.js';
 
 function delay(ms) {
@@ -69,6 +71,14 @@ export function initDemoFlow(scene, chat) {
   let running = false;
   let backendAvailable = null; // null = unknown, true/false after first check
 
+  // Prepper state machine. While prepperSession is set, user messages are
+  // routed to /api/prepper/respond instead of the marketplace search. Once
+  // a Briefing is produced (or the prepper service is unavailable), we
+  // fall through to the existing runFlow.
+  let prepperSession = null;
+  let prepperBriefing = null;
+  let prepperDisabled = false; // sticky once we determine prepper is unreachable
+
   function getPath() {
     const toggle = document.getElementById('demo-mode');
     if (toggle) {
@@ -77,6 +87,74 @@ export function initDemoFlow(scene, chat) {
       if (val === 'no-results') return 'no-results';
     }
     return 'auto';
+  }
+
+  // Render any prepper response — either a clarifying question (status="asking")
+  // or a finalized briefing (status="ready"). Returns true if the loop is
+  // still asking and the next user message should go to /respond.
+  function renderPrepperTurn(turn) {
+    if (turn.status === 'asking' && turn.question) {
+      chat.addMessage('agent', turn.question);
+      return true;
+    }
+    if (turn.status === 'ready' && turn.briefing) {
+      prepperBriefing = turn.briefing;
+      prepperSession = null;
+      const summary = turn.briefing.goal_summary || '';
+      chat.addMessage(
+        'agent',
+        `Got it. Searching the Exchange for: ${summary}`
+      );
+      return false;
+    }
+    return false;
+  }
+
+  // First user message of a session: try to start a prepper conversation.
+  // On any failure (network, 503, etc.), mark prepper disabled for this
+  // page session and let the caller fall through to the direct flow.
+  async function tryStartPrepper(query) {
+    if (prepperDisabled) return null;
+    // Demo toggles short-circuit prepper so e2e tests stay deterministic.
+    if (getPath() !== 'auto') {
+      prepperDisabled = true;
+      return null;
+    }
+    try {
+      const buyerID = getBuyerID();
+      const turn = await startPrepper(buyerID, query);
+      return turn;
+    } catch {
+      prepperDisabled = true;
+      backendAvailable = false;
+      return null;
+    }
+  }
+
+  async function tryRespondPrepper(answer) {
+    try {
+      return await respondPrepper(prepperSession, answer);
+    } catch {
+      // Mid-conversation failure: drop prepper, treat the latest answer as
+      // the buyer's final query, and fall through to the direct flow.
+      prepperSession = null;
+      prepperDisabled = true;
+      return null;
+    }
+  }
+
+  // Build the search string passed into /api/v1/enter. If a prepper Briefing
+  // exists, fold its goal_summary + selection_criteria into the query so the
+  // marketplace search reflects everything the buyer clarified — the
+  // briefing is the only thing that crosses into the walled system.
+  function buildEnterQuery(query) {
+    if (!prepperBriefing) return query;
+    const parts = [prepperBriefing.goal_summary || query];
+    const criteria = prepperBriefing.selection_criteria || [];
+    if (criteria.length > 0) {
+      parts.push(criteria.join(' '));
+    }
+    return parts.filter(Boolean).join(' ').trim() || query;
   }
 
   async function runFlow(query) {
@@ -104,7 +182,7 @@ export function initDemoFlow(scene, chat) {
     // Try real backend first (unless forced to no-results)
     let results = null;
     if (forcedPath !== 'no-results') {
-      results = await enterBackend(query);
+      results = await enterBackend(buildEnterQuery(query));
       if (results === null) {
         // Backend unreachable — use mock data
         if (backendAvailable === null) {
@@ -147,8 +225,63 @@ export function initDemoFlow(scene, chat) {
     chat.addBuyRequestForm(query);
   }
 
-  // Wire up handlers
-  chat.onUserMessage = (text) => {
+  // Wire up handlers. The user-message router has three branches:
+  //   1. If a prepper conversation is in progress, route to /respond.
+  //   2. Otherwise, try to START a prepper conversation. If we get back a
+  //      clarifying question, render it and stop here (await next message).
+  //   3. If prepper finalized immediately, or is unavailable / disabled,
+  //      fall through to runFlow with the briefing as context (when present).
+  chat.onUserMessage = async (text) => {
+    if (running) return;
+
+    // Branch 1: in the middle of a clarification loop.
+    if (prepperSession) {
+      chat.setInputEnabled(false);
+      chat.addTypingIndicator();
+      const turn = await tryRespondPrepper(text);
+      chat.removeTypingIndicator();
+      chat.setInputEnabled(true);
+      if (turn) {
+        const stillAsking = renderPrepperTurn(turn);
+        if (stillAsking) {
+          prepperSession = turn.session_id;
+          return;
+        }
+        // status === "ready": Briefing captured; fall through to runFlow
+        // using the original query that kicked off the conversation. We
+        // don't have it on hand so use the buyer's most recent answer as
+        // the query — it's the freshest framing they gave us.
+        runFlow(text);
+        return;
+      }
+      // Failure mid-conversation: fall through to direct flow.
+      runFlow(text);
+      return;
+    }
+
+    // Branch 2: try to open a clarification conversation.
+    // Skip the spinner if we already know prepper will short-circuit (forced
+    // demo mode, or previously disabled) — keeps deterministic e2e tests
+    // free of incidental UI flicker.
+    const prepperEligible =
+      !prepperBriefing && !prepperDisabled && getPath() === 'auto';
+    if (prepperEligible) {
+      chat.setInputEnabled(false);
+      chat.addTypingIndicator();
+      const turn = await tryStartPrepper(text);
+      chat.removeTypingIndicator();
+      chat.setInputEnabled(true);
+      if (turn) {
+        const stillAsking = renderPrepperTurn(turn);
+        if (stillAsking) {
+          prepperSession = turn.session_id;
+          return;
+        }
+        // Finalized on the first turn — fall through with the briefing.
+      }
+    }
+
+    // Branch 3: direct flow.
     runFlow(text);
   };
 

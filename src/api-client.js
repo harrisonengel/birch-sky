@@ -87,6 +87,32 @@ export async function createBuyOrder({ buyerID, query, description, maxPriceCent
 }
 
 /**
+ * Start a new prepper clarification session.
+ * @param {string} buyerID
+ * @param {string} initialQuery
+ * @returns {Promise<{session_id: string, status: string, turn: number, question?: string, briefing?: object}>}
+ */
+export async function startPrepper(buyerID, initialQuery) {
+  return post(`/api/prepper/start`, {
+    buyer_id: buyerID,
+    initial_query: initialQuery,
+  });
+}
+
+/**
+ * Submit an answer to the prepper's latest clarifying question.
+ * @param {string} sessionID
+ * @param {string} answer
+ * @returns {Promise<{session_id: string, status: string, turn: number, question?: string, briefing?: object}>}
+ */
+export async function respondPrepper(sessionID, answer) {
+  return post(`/api/prepper/respond`, {
+    session_id: sessionID,
+    answer: answer,
+  });
+}
+
+/**
  * Run the buyer agent via the harness service.
  * @param {string} userInput
  * @param {object} context - {background, goal, constraints}
