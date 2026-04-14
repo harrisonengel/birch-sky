@@ -177,12 +177,12 @@ func newTestServer(t *testing.T) *httptest.Server {
 	indexer := search.NewIndexer(sharedEngine, embedder)
 
 	listingSvc := service.NewListingService(listingRepo, sellerRepo, sharedObjStore, indexer)
-	searchSvc := service.NewSearchService(sharedEngine, embedder)
+	turnMarketSvc := service.NewTurnMarketService(sharedEngine, embedder)
 	purchaseSvc := service.NewPurchaseService(txnRepo, ownRepo, listingRepo, &MockPaymentProcessor{}, sharedObjStore, "market-data")
 	buyOrderSvc := service.NewBuyOrderService(buyOrderRepo, listingRepo)
 
 	r := chi.NewRouter()
-	api.RegisterRoutes(r, listingSvc, searchSvc, purchaseSvc, buyOrderSvc)
+	api.RegisterRoutes(r, listingSvc, turnMarketSvc, purchaseSvc, buyOrderSvc)
 
 	ts := httptest.NewServer(r)
 	t.Cleanup(func() { ts.Close() })

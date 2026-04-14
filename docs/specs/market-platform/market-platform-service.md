@@ -200,7 +200,7 @@ CREATE TABLE buy_orders (
 
 Using `github.com/mark3labs/mcp-go`:
 
-1. **`search_marketplace`** — natural language search with optional category/price filters. Delegates to search service.
+1. **`enter_marketplace`** — enter the exchange with a natural language query and optional category/price filters. Delegates to enter service.
 2. **`get_listing`** — full public metadata for a listing by ID.
 3. **`analyze_data`** — buyer agent asks questions about a dataset; the service loads the data from MinIO, sends it to Claude API with the questions, returns answers without revealing raw data. This is the Arrow's paradox resolver.
 
@@ -599,14 +599,14 @@ Security Reviewer: reviews after Phase 1, Phase 3, Phase 4, Phase 6
 **Deliverables**:
 - `internal/mcp/server.go`: SSE transport on `:8081` using `mcp-go`
 - `internal/mcp/tools.go`: 3 tool definitions:
-  - `search_marketplace`: params `{query, category?, max_price_cents?}` → delegates to `SearchService`
+  - `enter_marketplace`: params `{query, category?, max_price_cents?}` → delegates to `TurnMarketService`
   - `get_listing`: params `{listing_id}` → delegates to `ListingRepo.GetByID`
   - `analyze_data`: params `{listing_id, questions[]}` → loads data from MinIO, calls Claude API, returns answers
 - `DataAnalyzer` interface + implementation using `anthropic-sdk-go`
 - `internal/mcp/design.md`
 - MCP server started in `main.go` alongside HTTP server (separate goroutine)
 
-**Verify**: Connect an MCP client to `http://localhost:8081/sse`, call `search_marketplace` with a query, get results.
+**Verify**: Connect an MCP client to `http://localhost:8081/sse`, call `enter_marketplace` with a query, get results.
 
 **Starts**: After Phases 3, 4, 5 complete
 **Blocks**: Phase 7
@@ -619,8 +619,8 @@ Security Reviewer: reviews after Phase 1, Phase 3, Phase 4, Phase 6
 **Deliverables**:
 - `tests/integration/mcp_test.go`:
   - Connect to MCP SSE endpoint → successful handshake
-  - Call `search_marketplace` with valid query → returns listing results
-  - Call `search_marketplace` with empty query → appropriate error
+  - Call `enter_marketplace` with valid query → returns listing results
+  - Call `enter_marketplace` with empty query → appropriate error
   - Call `get_listing` with valid ID → returns listing metadata
   - Call `get_listing` with invalid ID → error response
   - Call `analyze_data` with valid listing + questions → returns LLM-generated answers
@@ -678,9 +678,9 @@ The security reviewer operates asynchronously, reviewing each phase's output bef
 - `cmd/seed/main.go`: creates 2 demo sellers, 5-6 listings with sample CSV/JSON files matching demo categories (consumer electronics pricing, real estate data, SaaS metrics, etc.)
 - `make seed` target in Makefile
 - `tests/integration/e2e_test.go` (QA Engineer):
-  - Full flow: seed data → search → find listing → initiate purchase → confirm → download → verify data matches uploaded file
-  - Buy order flow: search fails → create buy order → seller fills → buyer purchases filled listing
-  - MCP flow: connect → search_marketplace → get_listing → analyze_data → verify answers are relevant
+  - Full flow: seed data → enter → find listing → initiate purchase → confirm → download → verify data matches uploaded file
+  - Buy order flow: enter fails → create buy order → seller fills → buyer purchases filled listing
+  - MCP flow: connect → enter_marketplace → get_listing → analyze_data → verify answers are relevant
 
 **Verify**: `make docker-up-infra && make run && make seed` then run `go test ./tests/integration/ -run TestE2E`.
 

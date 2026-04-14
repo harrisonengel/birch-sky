@@ -36,8 +36,8 @@ Go CLI using cobra at `src/market-platform/cmd/iecli/`.
 
 ### 5. Frontend Wiring
 Replace mock data with real API calls:
-- Chat query → `POST /api/v1/search` on market-platform
-- Result cards populated from search response
+- Chat query → `POST /api/v1/enter` on market-platform
+- Result cards populated from enter response
 - Buy button → `POST /api/v1/purchases` + `POST /api/v1/purchases/{id}/confirm`
 - Buy request form → `POST /api/v1/buy-orders`
 - New module: `src/api-client.js` — thin wrapper around fetch to market-platform

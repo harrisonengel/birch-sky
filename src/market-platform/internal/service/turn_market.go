@@ -8,16 +8,16 @@ import (
 	"github.com/harrisonengel/birch-sky/src/market-platform/internal/search"
 )
 
-type SearchService struct {
+type TurnMarketService struct {
 	engine   search.SearchEngine
 	embedder search.Embedder
 }
 
-func NewSearchService(engine search.SearchEngine, embedder search.Embedder) *SearchService {
-	return &SearchService{engine: engine, embedder: embedder}
+func NewTurnMarketService(engine search.SearchEngine, embedder search.Embedder) *TurnMarketService {
+	return &TurnMarketService{engine: engine, embedder: embedder}
 }
 
-type SearchRequest struct {
+type EnterRequest struct {
 	Query         string `json:"query"`
 	Category      string `json:"category,omitempty"`
 	MaxPriceCents *int   `json:"max_price_cents,omitempty"`
@@ -25,13 +25,13 @@ type SearchRequest struct {
 	PerPage       int    `json:"per_page,omitempty"`
 }
 
-type SearchResponse struct {
+type EnterResponse struct {
 	Results []search.SearchResult `json:"results"`
 	Total   int                   `json:"total"`
 	Mode    string                `json:"mode"`
 }
 
-func (s *SearchService) Search(ctx context.Context, req SearchRequest) (*SearchResponse, error) {
+func (s *TurnMarketService) Enter(ctx context.Context, req EnterRequest) (*EnterResponse, error) {
 	mode := req.Mode
 	if mode == "" {
 		mode = "hybrid"
@@ -52,7 +52,7 @@ func (s *SearchService) Search(ctx context.Context, req SearchRequest) (*SearchR
 		if err != nil {
 			return nil, err
 		}
-		return &SearchResponse{Results: results, Total: len(results), Mode: mode}, nil
+		return &EnterResponse{Results: results, Total: len(results), Mode: mode}, nil
 
 	case "vector":
 		embedding, err := s.embedder.Embed(ctx, req.Query)
@@ -63,14 +63,14 @@ func (s *SearchService) Search(ctx context.Context, req SearchRequest) (*SearchR
 		if err != nil {
 			return nil, err
 		}
-		return &SearchResponse{Results: results, Total: len(results), Mode: mode}, nil
+		return &EnterResponse{Results: results, Total: len(results), Mode: mode}, nil
 
 	default: // hybrid
-		return s.hybridSearch(ctx, req.Query, filters, size)
+		return s.hybridEnter(ctx, req.Query, filters, size)
 	}
 }
 
-func (s *SearchService) hybridSearch(ctx context.Context, query string, filters search.SearchFilters, size int) (*SearchResponse, error) {
+func (s *TurnMarketService) hybridEnter(ctx context.Context, query string, filters search.SearchFilters, size int) (*EnterResponse, error) {
 	// Get embedding for vector search
 	embedding, err := s.embedder.Embed(ctx, query)
 	if err != nil {
@@ -102,7 +102,7 @@ func (s *SearchService) hybridSearch(ctx context.Context, query string, filters 
 
 	// Reciprocal Rank Fusion (k=60)
 	merged := rrfMerge(textResults, vectorResults, 60, size)
-	return &SearchResponse{Results: merged, Total: len(merged), Mode: "hybrid"}, nil
+	return &EnterResponse{Results: merged, Total: len(merged), Mode: "hybrid"}, nil
 }
 
 func rrfMerge(textResults, vectorResults []search.SearchResult, k, maxResults int) []search.SearchResult {

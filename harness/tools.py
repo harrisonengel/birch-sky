@@ -17,7 +17,7 @@ def configure(url: str, index: str, user: str | None, password: str | None) -> N
 
 # Anthropic tool schema for search_opensearch. Mirrors the Go TextSearch
 # shape in src/market-platform/internal/search/opensearch.go and the
-# MCP search_marketplace tool.
+# MCP enter_marketplace tool.
 SEARCH_TOOL_SCHEMA = {
     "name": "search_opensearch",
     "description": (

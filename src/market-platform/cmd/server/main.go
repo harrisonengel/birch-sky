@@ -117,7 +117,7 @@ func main() {
 
 	// Services
 	listingSvc := service.NewListingService(listingRepo, sellerRepo, objStore, indexer)
-	searchSvc := service.NewSearchService(searchEngine, embedder)
+	turnMarketSvc := service.NewTurnMarketService(searchEngine, embedder)
 	purchaseSvc := service.NewPurchaseService(transactionRepo, ownershipRepo, listingRepo, paymentProcessor, objStore, cfg.MinIOBucket)
 	buyOrderSvc := service.NewBuyOrderService(buyOrderRepo, listingRepo)
 
@@ -134,7 +134,7 @@ func main() {
 
 	r.Get("/ready", api.ReadyHandler(db, cfg.OpenSearchURL, cfg.MinIOEndpoint))
 
-	api.RegisterRoutes(r, listingSvc, searchSvc, purchaseSvc, buyOrderSvc)
+	api.RegisterRoutes(r, listingSvc, turnMarketSvc, purchaseSvc, buyOrderSvc)
 
 	// MCP server (separate goroutine)
 	var analyzer mcpserver.DataAnalyzer
@@ -148,7 +148,7 @@ func main() {
 	go func() {
 		mcpAddr := fmt.Sprintf(":%d", cfg.MCPPort)
 		log.Printf("MCP server listening on %s", mcpAddr)
-		if err := mcpserver.Serve(mcpAddr, searchSvc, listingRepo, analyzer, objStore, cfg.MinIOBucket); err != nil {
+		if err := mcpserver.Serve(mcpAddr, turnMarketSvc, listingRepo, analyzer, objStore, cfg.MinIOBucket); err != nil {
 			log.Printf("MCP server error: %v", err)
 		}
 	}()

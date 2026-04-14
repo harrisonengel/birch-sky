@@ -1,7 +1,7 @@
 // Command iecli is the operator CLI for the Information Exchange market
-// platform. It talks to the running HTTP API for seeding and searching,
-// and connects to Postgres directly for structured SQL queries against
-// sample dataset tables.
+// platform. It talks to the running HTTP API for seeding and entering
+// the exchange, and connects to Postgres directly for structured SQL
+// queries against sample dataset tables.
 package main
 
 import (
@@ -29,7 +29,7 @@ func main() {
 	root.PersistentFlags().StringVar(&databaseURL, "database-url", "", "Postgres connection string (default: $DATABASE_URL or local docker)")
 
 	root.AddCommand(seedCmd())
-	root.AddCommand(searchCmd())
+	root.AddCommand(enterCmd())
 	root.AddCommand(queryCmd)
 
 	if err := root.Execute(); err != nil {
@@ -366,38 +366,38 @@ func uploadData(listingID, csvContent, title string) error {
 }
 
 // ---------------------------------------------------------------------------
-// search
+// enter
 // ---------------------------------------------------------------------------
 
-func searchCmd() *cobra.Command {
+func enterCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "search [query]",
-		Short: "Search the marketplace",
+		Use:   "enter [query]",
+		Short: "Enter the marketplace",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := strings.Join(args, " ")
-			return runSearch(query)
+			return runEnter(query)
 		},
 	}
 	return cmd
 }
 
-func runSearch(query string) error {
+func runEnter(query string) error {
 	body, _ := json.Marshal(map[string]interface{}{
 		"query":    query,
 		"mode":     "text",
 		"per_page": 10,
 	})
 
-	resp, err := http.Post(apiBase+"/api/v1/search", "application/json", bytes.NewReader(body))
+	resp, err := http.Post(apiBase+"/api/v1/enter", "application/json", bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("search request: %w", err)
+		return fmt.Errorf("enter request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("search failed (%d): %s", resp.StatusCode, string(data))
+		return fmt.Errorf("enter failed (%d): %s", resp.StatusCode, string(data))
 	}
 
 	var result struct {
