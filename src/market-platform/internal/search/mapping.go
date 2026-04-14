@@ -56,6 +56,9 @@ var IndexMapping = map[string]interface{}{
 			"listing_id": map[string]interface{}{
 				"type": "keyword",
 			},
+			"seller_name": map[string]interface{}{
+				"type": "keyword",
+			},
 		},
 	},
 }
