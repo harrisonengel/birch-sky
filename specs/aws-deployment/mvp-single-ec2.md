@@ -122,182 +122,48 @@ echo "Instance: $INSTANCE_ID  IP: $EIP"
 **Now point your DNS A record at `$EIP`.** DNS propagation can be fast (1-2 min)
 if your TTL is low.
 
-### Phase 2: Instance setup (10 min)
+### Phase 2: Instance setup — the automated way (15 min)
 
-SSH in and run:
+All of phases 2-5 are automated by `deploy/setup.sh`. The config files
+it uses are checked into the repo:
+
+| File                            | Purpose                                         |
+|---------------------------------|-------------------------------------------------|
+| `deploy/setup.sh`              | One-shot setup script (Docker, Nginx, TLS, etc) |
+| `deploy/docker-compose.prod.yml` | Compose overlay: real creds, localhost-only ports, restart policies |
+| `deploy/nginx-ie.conf`         | Nginx reverse proxy + SPA config                |
+| `deploy/env.example`           | Template for the `.env` secrets file             |
+
+SSH in:
 
 ```bash
 ssh -i your-key.pem ubuntu@$EIP
 ```
 
-#### 2a. Install Docker + Nginx
-
-```bash
-# Docker (official convenience script)
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker ubuntu
-newgrp docker
-
-# Nginx + Certbot
-sudo apt-get update && sudo apt-get install -y nginx certbot python3-certbot-nginx
-```
-
-#### 2b. Clone repo and configure
+Clone the repo and create your `.env`:
 
 ```bash
 git clone https://github.com/harrisonengel/birch-sky.git ~/birch-sky
-cd ~/birch-sky/src/market-platform
+cd ~/birch-sky/deploy
+cp env.example .env
+nano .env   # Fill in real passwords and API keys
+            # Generate passwords with: openssl rand -base64 24
 ```
 
-Create the production `.env` file:
+Run the setup script:
 
 ```bash
-cat > .env << 'ENVEOF'
-# --- Secrets (change these!) ---
-POSTGRES_PASSWORD=<generate-a-real-password>
-MINIO_ROOT_USER=ieadmin
-MINIO_ROOT_PASSWORD=<generate-a-real-password>
-ANTHROPIC_API_KEY=<your-key>
-STRIPE_SECRET_KEY=<your-key-or-leave-blank>
-
-# --- Derived (match the passwords above) ---
-DATABASE_URL=postgres://ieuser:${POSTGRES_PASSWORD}@postgres:5432/iemarket?sslmode=disable
-OPENSEARCH_URL=http://opensearch:9200
-MINIO_ENDPOINT=minio:9000
-MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
-MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
-MINIO_BUCKET=market-data
-MINIO_USE_SSL=false
-HTTP_PORT=8080
-MCP_PORT=8081
-OPENSEARCH_INDEX=listings
-MODEL_NAME=claude-sonnet-4-5
-ENVEOF
+bash setup.sh YOUR_DOMAIN
 ```
 
-> **Generate passwords with**: `openssl rand -base64 24`
-
-### Phase 3: Production docker-compose overlay (5 min)
-
-Create `docker-compose.prod.yml` alongside the existing file. This overrides
-dev defaults with real credentials and adds restart policies:
-
-```yaml
-# docker-compose.prod.yml
-services:
-  postgres:
-    environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    restart: unless-stopped
-
-  opensearch:
-    environment:
-      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"   # more RAM on xlarge
-    restart: unless-stopped
-
-  minio:
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    restart: unless-stopped
-
-  market-platform:
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
-    restart: unless-stopped
-
-  agent-harness:
-    environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-    restart: unless-stopped
-```
-
-Start everything:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-```
-
-Verify:
-
-```bash
-# Wait for health checks
-docker compose ps   # all should show "healthy"
-curl -s http://localhost:8080/health   # {"status":"ok"}
-curl -s http://localhost:8000/health   # {"status":"ok"}
-```
-
-### Phase 4: Frontend build + Nginx (5 min)
-
-#### 4a. Build the frontend
-
-```bash
-cd ~/birch-sky
-npm ci && npm run build
-sudo mkdir -p /var/www/ie
-sudo cp -r dist/* /var/www/ie/
-```
-
-#### 4b. Configure Nginx
-
-```bash
-sudo tee /etc/nginx/sites-available/ie << 'NGEOF'
-server {
-    listen 80;
-    server_name YOUR_DOMAIN;   # e.g. demo.infoexchange.io
-
-    root /var/www/ie;
-    index index.html;
-
-    # Frontend - SPA fallback
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # Market platform API
-    location /api/v1/ {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # Health endpoint
-    location /health {
-        proxy_pass http://127.0.0.1:8080;
-    }
-
-    # Agent harness (rewrite /agent/* → /api/*)
-    location /agent/ {
-        rewrite ^/agent/(.*)$ /api/$1 break;
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        # Agent requests may take a while
-        proxy_read_timeout 120s;
-    }
-}
-NGEOF
-
-sudo ln -sf /etc/nginx/sites-available/ie /etc/nginx/sites-enabled/ie
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-### Phase 5: TLS with Let's Encrypt (5 min)
-
-```bash
-sudo certbot --nginx -d YOUR_DOMAIN --non-interactive --agree-tos -m your@email.com
-```
-
-Certbot auto-configures the Nginx server block for HTTPS and sets up
-auto-renewal via a systemd timer.
+The script:
+1. Validates your `.env` (rejects default passwords)
+2. Installs Docker, Nginx, Certbot, Node.js
+3. Builds the frontend and copies it to `/var/www/ie`
+4. Configures Nginx with the checked-in config
+5. Starts all services via `docker compose` with the prod overlay
+6. Waits for health checks
+7. Requests a TLS certificate via Let's Encrypt
 
 Verify: `https://YOUR_DOMAIN` should load the frontend and
 `https://YOUR_DOMAIN/api/v1/health` should return `{"status":"ok"}`.

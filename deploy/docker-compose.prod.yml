@@ -1,0 +1,46 @@
+# Production overlay — use with the base compose file:
+#   docker compose -f ../src/market-platform/docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Requires Docker Compose v2.24+ (for !override merge behavior).
+# Requires a .env file alongside this file. See env.example.
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    restart: unless-stopped
+    # No host port — only reachable from other containers via docker network
+    ports: !override []
+
+  opensearch:
+    environment:
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+    restart: unless-stopped
+    ports: !override []
+
+  minio:
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    restart: unless-stopped
+    ports: !override []
+
+  market-platform:
+    environment:
+      DATABASE_URL: postgres://ieuser:${POSTGRES_PASSWORD}@postgres:5432/iemarket?sslmode=disable
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    # Bind to localhost only — Nginx handles public traffic
+    ports: !override
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8081:8081"
+    restart: unless-stopped
+
+  agent-harness:
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    ports: !override
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
