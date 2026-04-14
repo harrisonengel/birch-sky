@@ -192,12 +192,14 @@ export function initDemoFlow(scene, chat) {
     const buyerID = getBuyerID();
 
     try {
-      // Real buy order creation
+      // Real buy order creation — combine title and description into query
       const maxPriceCents = Math.round(parseFloat(data.maxPrice || '5') * 100);
+      const query = data.description
+        ? `${data.title}: ${data.description}`
+        : data.title;
       await createBuyOrder({
         buyerID,
-        query: data.title,
-        description: data.description,
+        query,
         maxPriceCents,
         category: '',
       });
