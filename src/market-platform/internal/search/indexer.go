@@ -42,10 +42,20 @@ func (idx *Indexer) IndexListing(ctx context.Context, listing *domain.Listing, d
 		tagsStr = strings.Join(tags, " ")
 	}
 
-	embeddingText := strings.Join([]string{listing.Title, listing.Description, tagsStr, contentText}, " ")
-	embedding, err := idx.embedder.Embed(ctx, embeddingText)
-	if err != nil {
-		return fmt.Errorf("embed: %w", err)
+	// In pipeline mode the engine handles embedding server-side, so
+	// we skip the (potentially slow / network-bound) Embed call. In
+	// client-side mode we still need a vector to ship with the doc.
+	var embedding []float64
+	if !idx.engine.PipelineMode() {
+		if idx.embedder == nil {
+			return fmt.Errorf("indexer: engine is not in pipeline mode and no embedder is configured")
+		}
+		embeddingText := strings.Join([]string{listing.Title, listing.Description, tagsStr, contentText}, " ")
+		var err error
+		embedding, err = idx.embedder.Embed(ctx, embeddingText)
+		if err != nil {
+			return fmt.Errorf("embed: %w", err)
+		}
 	}
 
 	sName := ""

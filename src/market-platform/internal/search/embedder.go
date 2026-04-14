@@ -11,7 +11,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 )
 
-const EmbeddingDimension = 1024
+// BedrockDimension is the output dimensionality of the Bedrock Titan
+// Embeddings v2 model. Kept here as a Bedrock-specific constant; the
+// index dimension lives in mapping.go (EmbeddingDimension) and may be
+// configured to match whichever embedder is in use.
+const BedrockDimension = 1024
 
 type Embedder interface {
 	Embed(ctx context.Context, text string) ([]float64, error)

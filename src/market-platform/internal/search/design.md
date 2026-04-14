@@ -10,18 +10,33 @@ Buyer agent search quality is the core product. We use hybrid text + vector sear
 - `combined_fields` chosen over `best_fields` for proper BM25F per-field length normalization
 
 ### Vector Search: kNN
-- 1024-dim embeddings from AWS Bedrock Titan Embeddings v2:0
-- HNSW index with cosine similarity via nmslib engine
-- Query text embedded at search time using same model
+- Default: 384-dim embeddings from
+  `huggingface/sentence-transformers/all-MiniLM-L6-v2`, deployed
+  inside OpenSearch via ML Commons and applied as a `text_embedding`
+  ingest processor (`listings-embed`). Query text is embedded
+  server-side via the `neural` query type using the same model. See
+  `mlsetup.go` and `specs/features/semantic-search/opensearch-ml-pipeline.md`.
+- Optional: 1024-dim embeddings from AWS Bedrock Titan Embeddings
+  v2:0 when `EMBEDDING_MODE=bedrock` and AWS credentials are present.
+  In this mode the application embeds both documents and queries and
+  uses the `knn` query type instead of `neural`.
+- HNSW index with cosine similarity via the lucene engine.
 
 ### Fusion: Reciprocal Rank Fusion (RRF)
 - Application-side RRF with k=60
 - Text and vector queries issued in parallel
 - Results merged by RRF score: `score = Σ 1/(k + rank_i)`
 
-### Embedder Interface
-- `BedrockEmbedder`: production, requires AWS credentials
-- `LocalEmbedder`: deterministic hash-based pseudo-embeddings for dev/test
+### Embedder Selection
+The application's embedding backend is selected by the `EMBEDDING_MODE`
+env var:
+- `opensearch` (default) — server-side embeddings via OpenSearch ML
+  Commons. The Go process never embeds anything; the `Embedder`
+  interface is unused on the hot path.
+- `bedrock` — `BedrockEmbedder` (AWS Bedrock Titan v2). Used when
+  AWS credentials are configured and the operator opts in.
+- `local` — `LocalEmbedder`, deterministic hash pseudo-embeddings.
+  Tests only.
 
 ### Content Extraction
 

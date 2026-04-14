@@ -31,6 +31,7 @@ func main() {
 	root.AddCommand(seedCmd())
 	root.AddCommand(enterCmd())
 	root.AddCommand(queryCmd)
+	root.AddCommand(mlStatusCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
@@ -370,23 +371,27 @@ func uploadData(listingID, csvContent, title string) error {
 // ---------------------------------------------------------------------------
 
 func enterCmd() *cobra.Command {
+	var mode string
+	var perPage int
 	cmd := &cobra.Command{
 		Use:   "enter [query]",
-		Short: "Enter the marketplace",
+		Short: "Enter the marketplace and run a search (text | vector | hybrid)",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := strings.Join(args, " ")
-			return runEnter(query)
+			return runEnter(query, mode, perPage)
 		},
 	}
+	cmd.Flags().StringVar(&mode, "mode", "hybrid", "search mode: text, vector (semantic), or hybrid")
+	cmd.Flags().IntVar(&perPage, "per-page", 10, "number of results to return")
 	return cmd
 }
 
-func runEnter(query string) error {
+func runEnter(query, mode string, perPage int) error {
 	body, _ := json.Marshal(map[string]interface{}{
 		"query":    query,
-		"mode":     "text",
-		"per_page": 10,
+		"mode":     mode,
+		"per_page": perPage,
 	})
 
 	resp, err := http.Post(apiBase+"/api/v1/enter", "application/json", bytes.NewReader(body))
@@ -415,7 +420,7 @@ func runEnter(query string) error {
 		return fmt.Errorf("decode: %w", err)
 	}
 
-	fmt.Printf("Found %d results for %q:\n\n", result.Total, query)
+	fmt.Printf("Found %d results for %q (mode=%s):\n\n", result.Total, query, mode)
 	for i, r := range result.Results {
 		fmt.Printf("%d. %s (ID: %s)\n", i+1, r.Title, r.ListingID)
 		fmt.Printf("   Category: %s | Price: $%.2f | Score: %.4f\n", r.Category, float64(r.PriceCents)/100, r.Score)
