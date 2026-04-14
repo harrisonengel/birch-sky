@@ -1,6 +1,6 @@
 SERVICE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
-.PHONY: docker-up-infra docker-down run build migrate test
+.PHONY: docker-up-infra docker-down run build migrate test cli seed query
 
 docker-up-infra:
 	cd $(SERVICE_DIR) && docker compose up -d
@@ -22,3 +22,12 @@ test:
 
 test-integration:
 	cd $(SERVICE_DIR) && go test ./tests/integration/... -v -count=1 -tags=integration
+
+cli:
+	cd $(SERVICE_DIR) && go build -o bin/iecli ./cmd/iecli
+
+seed:
+	cd $(SERVICE_DIR) && go run ./cmd/iecli seed
+
+query:
+	cd $(SERVICE_DIR) && go run ./cmd/iecli query
