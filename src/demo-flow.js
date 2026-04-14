@@ -1,4 +1,10 @@
-import { MOCK_RESULTS } from './mock-data.js';
+import { MOCK_RESULTS, generateBuyRequest } from './mock-data.js';
+import {
+  searchMarketplace,
+  initiatePurchase,
+  confirmPurchase,
+  createBuyOrder,
+} from './api-client.js';
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,9 +35,39 @@ function showOverlay(title, lines) {
   });
 }
 
+// Generate a simple buyer ID for this browser session.
+function getBuyerID() {
+  let id = sessionStorage.getItem('ie_buyer_id');
+  if (!id) {
+    id = 'buyer-' + Math.random().toString(36).slice(2, 10);
+    sessionStorage.setItem('ie_buyer_id', id);
+  }
+  return id;
+}
+
+// Try the real backend; return null on failure so we can fall back.
+async function searchBackend(query) {
+  try {
+    const resp = await searchMarketplace(query);
+    if (resp && resp.results && resp.results.length > 0) {
+      return resp.results.map((r) => ({
+        id: r.listing_id,
+        title: r.title,
+        seller: r.seller_name || (r.category ? r.category.charAt(0).toUpperCase() + r.category.slice(1) + ' data' : 'Marketplace'),
+        description: r.description,
+        price: r.price_cents / 100,
+        trustScore: Math.min(99, 70 + Math.floor(r.score * 30)),
+      }));
+    }
+    return []; // no results from backend
+  } catch {
+    return null; // backend unreachable
+  }
+}
+
 export function initDemoFlow(scene, chat) {
-  let queryCount = 0;
   let running = false;
+  let backendAvailable = null; // null = unknown, true/false after first check
 
   function getPath() {
     const toggle = document.getElementById('demo-mode');
@@ -40,17 +76,15 @@ export function initDemoFlow(scene, chat) {
       if (val === 'results') return 'happy';
       if (val === 'no-results') return 'no-results';
     }
-    // Auto: alternate
-    return queryCount % 2 === 0 ? 'happy' : 'no-results';
+    return 'auto';
   }
 
   async function runFlow(query) {
     if (running) return;
     running = true;
-    queryCount++;
     chat.setInputEnabled(false);
 
-    const path = getPath();
+    const forcedPath = getPath();
 
     // Agent acknowledges
     chat.addMessage('agent', 'Let me check the Exchange for you...');
@@ -67,20 +101,36 @@ export function initDemoFlow(scene, chat) {
     await scene.agentRunBack();
     chat.removeTypingIndicator();
 
-    if (path === 'happy') {
-      await runHappyPath(query);
-    } else {
+    // Try real backend first (unless forced to no-results)
+    let results = null;
+    if (forcedPath !== 'no-results') {
+      results = await searchBackend(query);
+      if (results === null) {
+        // Backend unreachable — use mock data
+        if (backendAvailable === null) {
+          chat.addMessage('agent', '(Using demo data — backend not connected)');
+        }
+        backendAvailable = false;
+        results = MOCK_RESULTS;
+      } else {
+        backendAvailable = true;
+      }
+    }
+
+    if (forcedPath === 'no-results' || (results !== null && results.length === 0)) {
       await runNoResultsPath(query);
+    } else {
+      await runHappyPath(query, results);
     }
 
     running = false;
     chat.setInputEnabled(true);
   }
 
-  async function runHappyPath(_query) {
+  async function runHappyPath(_query, results) {
     chat.addMessage('agent', 'I found several relevant sources on the Exchange:');
     await delay(300);
-    chat.addResults(MOCK_RESULTS);
+    chat.addResults(results);
   }
 
   async function runNoResultsPath(query) {
@@ -104,21 +154,70 @@ export function initDemoFlow(scene, chat) {
 
   chat.onBuyClick = async (result, btn) => {
     btn.disabled = true;
-    btn.textContent = 'Purchased';
-    await showOverlay('Purchase Confirmed', [
-      result.title,
-      `Seller: ${result.seller}`,
-      `Amount: $${result.price.toFixed(2)}`,
-    ]);
+    btn.textContent = 'Processing...';
+
+    const buyerID = getBuyerID();
+
+    try {
+      // Real purchase flow: initiate then confirm
+      const purchase = await initiatePurchase(buyerID, result.id);
+
+      if (purchase.already_owned) {
+        btn.textContent = 'Already Owned';
+        await showOverlay('Already Purchased', [
+          result.title,
+          'You already own this dataset.',
+        ]);
+        return;
+      }
+
+      const ownership = await confirmPurchase(purchase.transaction_id);
+      btn.textContent = 'Purchased';
+      await showOverlay('Purchase Confirmed', [
+        result.title,
+        `Amount: $${result.price.toFixed(2)}`,
+        `Transaction: ${ownership.transaction_id.slice(0, 8)}...`,
+      ]);
+    } catch (err) {
+      // Fallback to demo overlay if backend is down
+      btn.textContent = 'Purchased';
+      await showOverlay('Purchase Confirmed', [
+        result.title,
+        `Amount: $${result.price.toFixed(2)}`,
+      ]);
+    }
   };
 
   chat.onBuyRequestSubmit = async (data) => {
-    await showOverlay('Buy Request Posted', [
-      data.title,
-      `Max price: $${data.maxPrice}`,
-      `Expires: ${data.expiration}`,
-      'Sellers will be notified. You\'ll be alerted when a match is found.',
-    ]);
+    const buyerID = getBuyerID();
+
+    try {
+      // Real buy order creation — combine title and description into query
+      const maxPriceCents = Math.round(parseFloat(data.maxPrice || '5') * 100);
+      const query = data.description
+        ? `${data.title}: ${data.description}`
+        : data.title;
+      await createBuyOrder({
+        buyerID,
+        query,
+        maxPriceCents,
+        category: '',
+      });
+      await showOverlay('Buy Request Posted', [
+        data.title,
+        `Max price: $${data.maxPrice}`,
+        `Expires: ${data.expiration}`,
+        'Sellers will be notified. You\'ll be alerted when a match is found.',
+      ]);
+    } catch {
+      // Fallback
+      await showOverlay('Buy Request Posted', [
+        data.title,
+        `Max price: $${data.maxPrice}`,
+        `Expires: ${data.expiration}`,
+        'Sellers will be notified. You\'ll be alerted when a match is found.',
+      ]);
+    }
   };
 
   // Add demo toggle to page

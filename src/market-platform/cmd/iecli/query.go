@@ -12,19 +12,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var queryCmd = &cobra.Command{
-	Use:   "query",
-	Short: "Run sample SQL queries against the demo data",
-	Long:  "Executes predefined sample SQL queries that demonstrate the kind of structured analysis a buyer agent would perform.",
-	RunE:  runQuery,
-}
-
 var queryName string
 
-func init() {
-	queryCmd.Flags().StringVarP(&queryName, "name", "n", "", "Run a specific query by name (avg-price, price-spread, top-roas, best-deals, all)")
-	rootCmd.AddCommand(queryCmd)
-}
+var queryCmd = func() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "query",
+		Short: "Run sample SQL queries against the demo data",
+		Long:  "Executes predefined sample SQL queries that demonstrate the kind of structured analysis a buyer agent would perform.",
+		RunE:  runQuery,
+	}
+	cmd.Flags().StringVarP(&queryName, "name", "n", "", "Run a specific query by name (avg-price, price-spread, top-roas, best-deals, all)")
+	return cmd
+}()
 
 type sampleQuery struct {
 	name  string

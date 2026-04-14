@@ -7,21 +7,13 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
-	"github.com/spf13/cobra"
 )
 
-var seedCmd = &cobra.Command{
-	Use:   "seed",
-	Short: "Seed the database with demo data",
-	Long:  "Inserts sample sellers, listings, buy orders, and structured dataset rows into Postgres. Safe to run multiple times (idempotent).",
-	RunE:  runSeed,
-}
-
-func init() {
-	rootCmd.AddCommand(seedCmd)
-}
-
-func runSeed(cmd *cobra.Command, args []string) error {
+// seedSampleDatasets connects directly to Postgres and populates the
+// sample_* dataset tables created by migration 002. These structured
+// tables represent the kind of data that sellers list for sale, and
+// exist so the query command can demonstrate SQL analysis.
+func seedSampleDatasets() error {
 	dsn := getDatabaseURL()
 	db, err := sqlx.Connect("postgres", dsn)
 	if err != nil {
@@ -31,189 +23,18 @@ func runSeed(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	log.Println("seeding sellers...")
-	if err := seedSellers(ctx, db); err != nil {
-		return fmt.Errorf("seed sellers: %w", err)
-	}
-
-	log.Println("seeding listings...")
-	if err := seedListings(ctx, db); err != nil {
-		return fmt.Errorf("seed listings: %w", err)
-	}
-
-	log.Println("seeding buy orders...")
-	if err := seedBuyOrders(ctx, db); err != nil {
-		return fmt.Errorf("seed buy orders: %w", err)
-	}
-
-	log.Println("seeding consumer electronics pricing data...")
 	if err := seedConsumerElectronicsPricing(ctx, db); err != nil {
-		return fmt.Errorf("seed consumer electronics pricing: %w", err)
+		return fmt.Errorf("consumer electronics pricing: %w", err)
 	}
 
-	log.Println("seeding ecommerce price comparison data...")
 	if err := seedEcommercePriceComparison(ctx, db); err != nil {
-		return fmt.Errorf("seed ecommerce price comparison: %w", err)
+		return fmt.Errorf("ecommerce price comparison: %w", err)
 	}
 
-	log.Println("seeding shopping ads benchmark data...")
 	if err := seedShoppingAdsBenchmark(ctx, db); err != nil {
-		return fmt.Errorf("seed shopping ads benchmark: %w", err)
+		return fmt.Errorf("shopping ads benchmark: %w", err)
 	}
 
-	log.Println("seed complete.")
-	return nil
-}
-
-// ---------------------------------------------------------------------------
-// Sellers
-// ---------------------------------------------------------------------------
-
-func seedSellers(ctx context.Context, db *sqlx.DB) error {
-	const q = `INSERT INTO sellers (id, name, email)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (email) DO NOTHING`
-
-	sellers := []struct {
-		id, name, email string
-	}{
-		{"a0000000-0000-0000-0000-000000000001", "RetailMetrics Inc.", "data@retailmetrics.io"},
-		{"a0000000-0000-0000-0000-000000000002", "DataHarvest", "hello@dataharvest.com"},
-		{"a0000000-0000-0000-0000-000000000003", "ShopIntel", "sales@shopintel.co"},
-		{"a0000000-0000-0000-0000-000000000004", "AdDataCo", "info@addataco.com"},
-	}
-
-	for _, s := range sellers {
-		if _, err := db.ExecContext(ctx, q, s.id, s.name, s.email); err != nil {
-			return fmt.Errorf("seller %s: %w", s.name, err)
-		}
-		log.Printf("  seller: %s", s.name)
-	}
-	return nil
-}
-
-// ---------------------------------------------------------------------------
-// Listings
-// ---------------------------------------------------------------------------
-
-func seedListings(ctx context.Context, db *sqlx.DB) error {
-	const q = `INSERT INTO listings (id, seller_id, title, description, category, price_cents, currency, data_format, tags, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
-		ON CONFLICT (id) DO NOTHING`
-
-	listings := []struct {
-		id, sellerID, title, desc, category string
-		priceCents                          int
-		dataFormat, tags                    string
-	}{
-		{
-			"b0000000-0000-0000-0000-000000000001",
-			"a0000000-0000-0000-0000-000000000001",
-			"Consumer Electronics Pricing Index Q1 2026",
-			"Aggregated pricing data across 12 major retailers, 50k+ SKUs. Covers smartphones, laptops, tablets, wearables, and audio equipment with daily price snapshots and discount tracking.",
-			"pricing",
-			250,
-			"sql/csv",
-			`["electronics", "pricing", "retail", "q1-2026"]`,
-		},
-		{
-			"b0000000-0000-0000-0000-000000000002",
-			"a0000000-0000-0000-0000-000000000002",
-			"Amazon Category Pricing - Electronics Under $100",
-			"Daily pricing snapshots for 8,200 electronics products under $100 on Amazon. 30-day history with price trend indicators and stock status.",
-			"pricing",
-			175,
-			"sql/csv",
-			`["amazon", "electronics", "budget", "daily-updates"]`,
-		},
-		{
-			"b0000000-0000-0000-0000-000000000003",
-			"a0000000-0000-0000-0000-000000000003",
-			"Walmart vs Amazon Price Comparison Dataset",
-			"Side-by-side pricing on 15,000+ overlapping catalog items between Walmart and Amazon. Updated weekly with price spread analysis and best-deal indicators.",
-			"pricing",
-			300,
-			"sql/csv",
-			`["walmart", "amazon", "comparison", "weekly"]`,
-		},
-		{
-			"b0000000-0000-0000-0000-000000000004",
-			"a0000000-0000-0000-0000-000000000004",
-			"Google Shopping Ads Benchmark - Electronics",
-			"CPC, CTR, conversion rate, and ROAS benchmarks from Google Shopping ads across electronics categories. Aggregated from 200+ advertisers.",
-			"advertising",
-			425,
-			"sql/csv",
-			`["google-shopping", "ads", "benchmark", "electronics"]`,
-		},
-		{
-			"b0000000-0000-0000-0000-000000000005",
-			"a0000000-0000-0000-0000-000000000001",
-			"Global Semiconductor Supply Chain Tracker",
-			"Weekly supply chain status for 300+ semiconductor components. Lead times, allocation status, and pricing trends from distributors worldwide.",
-			"supply-chain",
-			500,
-			"sql/csv",
-			`["semiconductor", "supply-chain", "components", "weekly"]`,
-		},
-		{
-			"b0000000-0000-0000-0000-000000000006",
-			"a0000000-0000-0000-0000-000000000003",
-			"DTC Brand Pricing Intelligence - Beauty & Wellness",
-			"Pricing and promotion tracking for 500+ direct-to-consumer beauty and wellness brands. Subscription pricing, bundle deals, and seasonal discount patterns.",
-			"pricing",
-			350,
-			"sql/csv",
-			`["dtc", "beauty", "wellness", "promotions"]`,
-		},
-	}
-
-	for _, l := range listings {
-		if _, err := db.ExecContext(ctx, q, l.id, l.sellerID, l.title, l.desc, l.category, l.priceCents, "usd", l.dataFormat, l.tags, "active"); err != nil {
-			return fmt.Errorf("listing %s: %w", l.title, err)
-		}
-		log.Printf("  listing: %s ($%.2f)", l.title, float64(l.priceCents)/100)
-	}
-	return nil
-}
-
-// ---------------------------------------------------------------------------
-// Buy Orders
-// ---------------------------------------------------------------------------
-
-func seedBuyOrders(ctx context.Context, db *sqlx.DB) error {
-	const q = `INSERT INTO buy_orders (id, buyer_id, query, criteria, max_price_cents, currency, category, status, expires_at)
-		VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, now() + interval '7 days')
-		ON CONFLICT (id) DO NOTHING`
-
-	orders := []struct {
-		id, buyerID, query, criteria, category string
-		maxPriceCents                          int
-	}{
-		{
-			"c0000000-0000-0000-0000-000000000001",
-			"buyer-agent-demo-001",
-			"Looking for real-time GPU pricing data across major retailers for the last 90 days",
-			`{"required_tags": ["gpu", "pricing"], "required_formats": ["csv", "sql"]}`,
-			"pricing",
-			1000,
-		},
-		{
-			"c0000000-0000-0000-0000-000000000002",
-			"buyer-agent-demo-002",
-			"Need competitive intelligence on SaaS pricing pages - enterprise tier comparison",
-			`{"required_tags": ["saas", "enterprise"], "min_freshness_days": 30}`,
-			"pricing",
-			750,
-		},
-	}
-
-	for _, o := range orders {
-		if _, err := db.ExecContext(ctx, q, o.id, o.buyerID, o.query, o.criteria, o.maxPriceCents, "usd", o.category, "open"); err != nil {
-			return fmt.Errorf("buy order %s: %w", o.id, err)
-		}
-		log.Printf("  buy order: %s (max $%.2f)", o.query[:50]+"...", float64(o.maxPriceCents)/100)
-	}
 	return nil
 }
 
@@ -227,7 +48,7 @@ func seedConsumerElectronicsPricing(ctx context.Context, db *sqlx.DB) error {
 		return err
 	}
 	if count > 0 {
-		log.Println("  already seeded, skipping")
+		log.Println("  sample_consumer_electronics_pricing: already seeded, skipping")
 		return nil
 	}
 
@@ -278,7 +99,7 @@ func seedConsumerElectronicsPricing(ctx context.Context, db *sqlx.DB) error {
 			return fmt.Errorf("row %s/%s: %w", r.product, r.retailer, err)
 		}
 	}
-	log.Printf("  inserted %d rows", len(rows))
+	log.Printf("  sample_consumer_electronics_pricing: inserted %d rows", len(rows))
 	return nil
 }
 
@@ -292,7 +113,7 @@ func seedEcommercePriceComparison(ctx context.Context, db *sqlx.DB) error {
 		return err
 	}
 	if count > 0 {
-		log.Println("  already seeded, skipping")
+		log.Println("  sample_ecommerce_price_comparison: already seeded, skipping")
 		return nil
 	}
 
@@ -301,11 +122,11 @@ func seedEcommercePriceComparison(ctx context.Context, db *sqlx.DB) error {
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 
 	rows := []struct {
-		product, category                    string
-		amazon, walmart, target, best        float64
-		bestPlatform                         string
-		spread                               float64
-		date                                 string
+		product, category             string
+		amazon, walmart, target, best float64
+		bestPlatform                  string
+		spread                        float64
+		date                          string
 	}{
 		{"iPhone 16 Pro 256GB", "smartphones", 999.00, 979.00, 0, 979.00, "Walmart", 2.04, "2026-03-15"},
 		{"Galaxy S26 Ultra", "smartphones", 1199.99, 1199.99, 0, 1199.99, "Amazon", 0.00, "2026-03-15"},
@@ -329,7 +150,7 @@ func seedEcommercePriceComparison(ctx context.Context, db *sqlx.DB) error {
 			return fmt.Errorf("row %s: %w", r.product, err)
 		}
 	}
-	log.Printf("  inserted %d rows", len(rows))
+	log.Printf("  sample_ecommerce_price_comparison: inserted %d rows", len(rows))
 	return nil
 }
 
@@ -343,7 +164,7 @@ func seedShoppingAdsBenchmark(ctx context.Context, db *sqlx.DB) error {
 		return err
 	}
 	if count > 0 {
-		log.Println("  already seeded, skipping")
+		log.Println("  sample_shopping_ads_benchmark: already seeded, skipping")
 		return nil
 	}
 
@@ -352,10 +173,10 @@ func seedShoppingAdsBenchmark(ctx context.Context, db *sqlx.DB) error {
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 
 	rows := []struct {
-		category, platform                        string
-		cpc, ctr, convRate, roas                  float64
-		spendIndex, numAdvertisers                int
-		month                                     string
+		category, platform       string
+		cpc, ctr, convRate, roas float64
+		spendIndex, numAdv       int
+		month                    string
 	}{
 		{"smartphones", "Google Shopping", 1.85, 2.10, 3.20, 4.50, 95, 142, "2026-03"},
 		{"smartphones", "Meta Ads", 1.20, 1.80, 2.80, 3.80, 78, 98, "2026-03"},
@@ -384,10 +205,10 @@ func seedShoppingAdsBenchmark(ctx context.Context, db *sqlx.DB) error {
 	}
 
 	for _, r := range rows {
-		if _, err := db.ExecContext(ctx, q, r.category, r.platform, r.cpc, r.ctr, r.convRate, r.roas, r.spendIndex, r.numAdvertisers, r.month); err != nil {
+		if _, err := db.ExecContext(ctx, q, r.category, r.platform, r.cpc, r.ctr, r.convRate, r.roas, r.spendIndex, r.numAdv, r.month); err != nil {
 			return fmt.Errorf("row %s/%s: %w", r.category, r.platform, err)
 		}
 	}
-	log.Printf("  inserted %d rows", len(rows))
+	log.Printf("  sample_shopping_ads_benchmark: inserted %d rows", len(rows))
 	return nil
 }

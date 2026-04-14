@@ -17,17 +17,18 @@ type SearchFilters struct {
 }
 
 type SearchResult struct {
-	ListingID string  `json:"listing_id"`
-	Score     float64 `json:"score"`
-	Title     string  `json:"title"`
+	ListingID  string  `json:"listing_id"`
+	Score      float64 `json:"score"`
+	Title      string  `json:"title"`
 	Description string `json:"description"`
-	Category  string  `json:"category"`
-	PriceCents int    `json:"price_cents"`
+	Category   string  `json:"category"`
+	PriceCents int     `json:"price_cents"`
+	SellerName string  `json:"seller_name"`
 }
 
 type SearchEngine interface {
 	EnsureIndex(ctx context.Context) error
-	IndexListing(ctx context.Context, listingID, title, description, category, status string, priceCents int, tags string, contentText string, embedding []float64) error
+	IndexListing(ctx context.Context, listingID, title, description, category, status string, priceCents int, tags string, contentText string, embedding []float64, sellerName string) error
 	DeleteListing(ctx context.Context, listingID string) error
 	TextSearch(ctx context.Context, query string, filters SearchFilters, size int) ([]SearchResult, error)
 	VectorSearch(ctx context.Context, embedding []float64, filters SearchFilters, size int) ([]SearchResult, error)
@@ -75,7 +76,7 @@ func (e *OpenSearchEngine) EnsureIndex(ctx context.Context) error {
 	return nil
 }
 
-func (e *OpenSearchEngine) IndexListing(ctx context.Context, listingID, title, description, category, status string, priceCents int, tags string, contentText string, embedding []float64) error {
+func (e *OpenSearchEngine) IndexListing(ctx context.Context, listingID, title, description, category, status string, priceCents int, tags string, contentText string, embedding []float64, sellerName string) error {
 	doc := map[string]interface{}{
 		"listing_id":   listingID,
 		"title":        title,
@@ -86,6 +87,7 @@ func (e *OpenSearchEngine) IndexListing(ctx context.Context, listingID, title, d
 		"tags":         tags,
 		"content_text": contentText,
 		"embedding":    embedding,
+		"seller_name":  sellerName,
 	}
 
 	body, _ := json.Marshal(doc)
@@ -240,12 +242,13 @@ func (e *OpenSearchEngine) executeSearch(ctx context.Context, searchQuery map[st
 	results := make([]SearchResult, 0, len(osResp.Hits.Hits))
 	for _, hit := range osResp.Hits.Hits {
 		r := SearchResult{
-			ListingID: getString(hit.Source, "listing_id"),
-			Score:     hit.Score,
-			Title:     getString(hit.Source, "title"),
+			ListingID:  getString(hit.Source, "listing_id"),
+			Score:      hit.Score,
+			Title:      getString(hit.Source, "title"),
 			Description: getString(hit.Source, "description"),
-			Category:  getString(hit.Source, "category"),
+			Category:   getString(hit.Source, "category"),
 			PriceCents: getInt(hit.Source, "price_cents"),
+			SellerName: getString(hit.Source, "seller_name"),
 		}
 		results = append(results, r)
 	}

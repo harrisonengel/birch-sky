@@ -107,7 +107,13 @@ func main() {
 	indexer := search.NewIndexer(searchEngine, embedder)
 
 	// Payments
-	paymentProcessor := payments.NewStripeProcessor(cfg.StripeKey)
+	var paymentProcessor payments.PaymentProcessor
+	if cfg.StripeKey != "" {
+		paymentProcessor = payments.NewStripeProcessor(cfg.StripeKey)
+	} else {
+		paymentProcessor = payments.NewStubProcessor()
+		log.Println("using stub payment processor (no STRIPE_SECRET_KEY configured)")
+	}
 
 	// Services
 	listingSvc := service.NewListingService(listingRepo, sellerRepo, objStore, indexer)

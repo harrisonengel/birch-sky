@@ -95,7 +95,11 @@ func registerSearchTool(s *mcpsdk.Server, deps *toolDeps) {
 		sb.WriteString(fmt.Sprintf("Found %d results:\n\n", resp.Total))
 		for i, r := range resp.Results {
 			sb.WriteString(fmt.Sprintf("%d. **%s** (ID: %s)\n", i+1, r.Title, r.ListingID))
-			sb.WriteString(fmt.Sprintf("   Category: %s | Price: $%.2f | Score: %.4f\n", r.Category, float64(r.PriceCents)/100, r.Score))
+			sellerInfo := r.Category
+			if r.SellerName != "" {
+				sellerInfo = r.SellerName + " | " + r.Category
+			}
+			sb.WriteString(fmt.Sprintf("   %s | Price: $%.2f | Score: %.4f\n", sellerInfo, float64(r.PriceCents)/100, r.Score))
 			sb.WriteString(fmt.Sprintf("   %s\n\n", r.Description))
 		}
 

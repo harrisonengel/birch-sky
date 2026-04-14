@@ -24,7 +24,7 @@ func (idx *Indexer) Engine() SearchEngine {
 	return idx.engine
 }
 
-func (idx *Indexer) IndexListing(ctx context.Context, listing *domain.Listing, dataReader io.Reader, dataFormat string) error {
+func (idx *Indexer) IndexListing(ctx context.Context, listing *domain.Listing, dataReader io.Reader, dataFormat string, sellerName ...string) error {
 	contentText := ""
 	if dataReader != nil {
 		var err error
@@ -48,9 +48,14 @@ func (idx *Indexer) IndexListing(ctx context.Context, listing *domain.Listing, d
 		return fmt.Errorf("embed: %w", err)
 	}
 
+	sName := ""
+	if len(sellerName) > 0 {
+		sName = sellerName[0]
+	}
+
 	return idx.engine.IndexListing(ctx,
 		listing.ID, listing.Title, listing.Description, listing.Category,
-		string(listing.Status), listing.PriceCents, tagsStr, contentText, embedding)
+		string(listing.Status), listing.PriceCents, tagsStr, contentText, embedding, sName)
 }
 
 func extractContent(reader io.Reader, format string) (string, error) {

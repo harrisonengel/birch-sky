@@ -10,10 +10,10 @@ test-results/
 playwright/.cache/
 coverage/
 
-# Go build artifacts
-src/market-platform/iecli
-src/market-platform/server
+# Go binaries
 src/market-platform/bin/
+src/market-platform/server
+src/market-platform/iecli
 
 # Agent orchestrator
 outputs/
