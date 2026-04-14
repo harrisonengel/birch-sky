@@ -7,7 +7,7 @@ import (
 )
 
 type EnterHandler struct {
-	svc *service.EnterService
+	svc *service.TurnMarketService
 }
 
 func (h *EnterHandler) Enter(w http.ResponseWriter, r *http.Request) {

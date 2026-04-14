@@ -19,21 +19,21 @@ type DataAnalyzer interface {
 
 // toolDeps holds shared dependencies for tool handlers.
 type toolDeps struct {
-	enterSvc    *service.EnterService
+	turnMarketSvc *service.TurnMarketService
 	listingRepo *postgres.ListingRepo
 	analyzer    DataAnalyzer
 	objStore    objectstore.ObjectStore
 	bucket      string
 }
 
-func Serve(addr string, enterSvc *service.EnterService, listingRepo *postgres.ListingRepo, analyzer DataAnalyzer, objStore objectstore.ObjectStore, bucket string) error {
+func Serve(addr string, turnMarketSvc *service.TurnMarketService, listingRepo *postgres.ListingRepo, analyzer DataAnalyzer, objStore objectstore.ObjectStore, bucket string) error {
 	s := mcpsdk.NewServer(&mcpsdk.Implementation{
 		Name:    "Information Exchange Market Platform",
 		Version: "1.0.0",
 	}, nil)
 
 	deps := &toolDeps{
-		enterSvc:    enterSvc,
+		turnMarketSvc: turnMarketSvc,
 		listingRepo: listingRepo,
 		analyzer:    analyzer,
 		objStore:    objStore,
@@ -84,7 +84,7 @@ func registerEnterTool(s *mcpsdk.Server, deps *toolDeps) {
 			enterReq.MaxPriceCents = input.MaxPriceCents
 		}
 
-		resp, err := deps.enterSvc.Enter(ctx, enterReq)
+		resp, err := deps.turnMarketSvc.Enter(ctx, enterReq)
 		if err != nil {
 			result := &mcpsdk.CallToolResult{}
 			result.SetError(fmt.Errorf("enter failed: %v", err))

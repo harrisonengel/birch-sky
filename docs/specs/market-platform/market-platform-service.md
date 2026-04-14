@@ -599,7 +599,7 @@ Security Reviewer: reviews after Phase 1, Phase 3, Phase 4, Phase 6
 **Deliverables**:
 - `internal/mcp/server.go`: SSE transport on `:8081` using `mcp-go`
 - `internal/mcp/tools.go`: 3 tool definitions:
-  - `enter_marketplace`: params `{query, category?, max_price_cents?}` → delegates to `EnterService`
+  - `enter_marketplace`: params `{query, category?, max_price_cents?}` → delegates to `TurnMarketService`
   - `get_listing`: params `{listing_id}` → delegates to `ListingRepo.GetByID`
   - `analyze_data`: params `{listing_id, questions[]}` → loads data from MinIO, calls Claude API, returns answers
 - `DataAnalyzer` interface + implementation using `anthropic-sdk-go`

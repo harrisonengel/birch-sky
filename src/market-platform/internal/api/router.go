@@ -10,7 +10,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func RegisterRoutes(r chi.Router, listingSvc *service.ListingService, enterSvc *service.EnterService, purchaseSvc *service.PurchaseService, buyOrderSvc *service.BuyOrderService) {
+func RegisterRoutes(r chi.Router, listingSvc *service.ListingService, turnMarketSvc *service.TurnMarketService, purchaseSvc *service.PurchaseService, buyOrderSvc *service.BuyOrderService) {
 	r.Use(CORS)
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -29,7 +29,7 @@ func RegisterRoutes(r chi.Router, listingSvc *service.ListingService, enterSvc *
 		r.Post("/listings/{id}/upload", listingHandler.Upload)
 
 		// Enter
-		enterHandler := &EnterHandler{svc: enterSvc}
+		enterHandler := &EnterHandler{svc: turnMarketSvc}
 		r.Post("/enter", enterHandler.Enter)
 
 		// Purchases

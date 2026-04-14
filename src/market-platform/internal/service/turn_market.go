@@ -8,13 +8,13 @@ import (
 	"github.com/harrisonengel/birch-sky/src/market-platform/internal/search"
 )
 
-type EnterService struct {
+type TurnMarketService struct {
 	engine   search.SearchEngine
 	embedder search.Embedder
 }
 
-func NewEnterService(engine search.SearchEngine, embedder search.Embedder) *EnterService {
-	return &EnterService{engine: engine, embedder: embedder}
+func NewTurnMarketService(engine search.SearchEngine, embedder search.Embedder) *TurnMarketService {
+	return &TurnMarketService{engine: engine, embedder: embedder}
 }
 
 type EnterRequest struct {
@@ -31,7 +31,7 @@ type EnterResponse struct {
 	Mode    string                `json:"mode"`
 }
 
-func (s *EnterService) Enter(ctx context.Context, req EnterRequest) (*EnterResponse, error) {
+func (s *TurnMarketService) Enter(ctx context.Context, req EnterRequest) (*EnterResponse, error) {
 	mode := req.Mode
 	if mode == "" {
 		mode = "hybrid"
@@ -70,7 +70,7 @@ func (s *EnterService) Enter(ctx context.Context, req EnterRequest) (*EnterRespo
 	}
 }
 
-func (s *EnterService) hybridEnter(ctx context.Context, query string, filters search.SearchFilters, size int) (*EnterResponse, error) {
+func (s *TurnMarketService) hybridEnter(ctx context.Context, query string, filters search.SearchFilters, size int) (*EnterResponse, error) {
 	// Get embedding for vector search
 	embedding, err := s.embedder.Embed(ctx, query)
 	if err != nil {
