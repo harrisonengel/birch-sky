@@ -21,8 +21,14 @@ def main() -> None:
     parser.add_argument(
         "-i", "--input", required=True, help="User input / instruction for the agent"
     )
+    parser.add_argument(
+        "-t",
+        "--transcript",
+        default=None,
+        help="Path to write real-time agent transcript (use tail -f to watch)",
+    )
     args = parser.parse_args()
-    run(args.config, args.session, args.input)
+    run(args.config, args.session, args.input, transcript_path=args.transcript)
 
 
 if __name__ == "__main__":

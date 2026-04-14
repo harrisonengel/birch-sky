@@ -21,8 +21,11 @@ from pydantic import BaseModel, Field
 from .config import HarnessConfig
 from .runner import execute
 from .session import from_context
+from .transcript import open_transcript
 
 app = FastAPI(title="IE Agent Harness", version="0.1.0")
+
+TRANSCRIPT_PATH = os.environ.get("TRANSCRIPT_PATH")
 
 app.add_middleware(
     CORSMiddleware,
@@ -54,6 +57,7 @@ class RunRequest(BaseModel):
 
 class RunResponse(BaseModel):
     response: str
+    transcript_path: str | None = None
 
 
 @app.post("/api/run", response_model=RunResponse)
@@ -64,8 +68,20 @@ def run_agent(req: RunRequest) -> RunResponse:
         raise HTTPException(status_code=503, detail=str(e))
 
     session = from_context(req.starting_context, max_turns=req.max_turns)
-    result = execute(config, session, req.user_input)
-    return RunResponse(response=result)
+
+    writer = None
+    on_step = None
+    if TRANSCRIPT_PATH:
+        writer = open_transcript(TRANSCRIPT_PATH)
+        on_step = writer
+
+    try:
+        result = execute(config, session, req.user_input, on_step=on_step)
+    finally:
+        if writer:
+            writer.close()
+
+    return RunResponse(response=result, transcript_path=TRANSCRIPT_PATH)
 
 
 @app.get("/health")

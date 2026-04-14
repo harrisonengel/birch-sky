@@ -6,7 +6,7 @@ WORKDIR /app
 COPY pyproject.toml .
 
 # Copy the package source
-COPY __init__.py __main__.py api.py config.py runner.py session.py tools.py ./harness/
+COPY __init__.py __main__.py api.py config.py runner.py session.py tools.py transcript.py ./harness/
 
 # Install the package and its dependencies
 RUN pip install --no-cache-dir .
