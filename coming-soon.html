@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Turn — Coming Soon</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      background: #000;
+      color: #ccc;
+      font-family: 'Courier New', Courier, monospace;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    #page {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+      padding: 24px;
+    }
+
+    .title {
+      color: #fff;
+      font-size: 56px;
+      letter-spacing: 12px;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    .subtitle {
+      color: #888;
+      font-size: 18px;
+      letter-spacing: 8px;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    #gate {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      display: block;
+      max-width: 90vw;
+      height: auto;
+    }
+
+    @media (max-width: 600px) {
+      .title { font-size: 32px; letter-spacing: 6px; }
+      .subtitle { font-size: 13px; letter-spacing: 4px; }
+      #page { gap: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="page">
+    <h1 class="title">The Turn</h1>
+    <canvas id="gate" width="320" height="320" aria-label="Pixel art gate"></canvas>
+    <p class="subtitle">Coming Soon</p>
+  </div>
+
+  <script>
+    (function () {
+      const canvas = document.getElementById('gate');
+      const ctx = canvas.getContext('2d');
+      const S = 4; // pixel scale — canvas is 80x80 logical pixels
+
+      function rect(px, py, pw, ph, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(px * S, py * S, pw * S, ph * S);
+      }
+
+      // Palette
+      const STONE_DARK = '#555';
+      const STONE_MID  = '#777';
+      const STONE_LITE = '#999';
+      const STONE_HI   = '#bbb';
+      const IRON_DARK  = '#333';
+      const IRON_MID   = '#555';
+      const SHADOW     = '#222';
+      const SKY        = '#0a0a0a';
+
+      // Background fill (matches body)
+      rect(0, 0, 80, 80, SKY);
+
+      // Ground line
+      rect(0, 74, 80, 6, STONE_DARK);
+      rect(0, 73, 80, 1, STONE_MID);
+
+      // Left pillar
+      rect(10, 18, 12, 56, STONE_MID);
+      rect(10, 18, 2,  56, STONE_HI);   // left highlight
+      rect(20, 18, 2,  56, STONE_DARK); // right shadow
+      // Left pillar cap
+      rect(8,  14, 16, 4, STONE_LITE);
+      rect(8,  14, 16, 1, STONE_HI);
+      rect(8,  17, 16, 1, STONE_DARK);
+      // Left pillar base
+      rect(8,  70, 16, 4, STONE_LITE);
+      rect(8,  70, 16, 1, STONE_HI);
+      rect(8,  73, 16, 1, STONE_DARK);
+      // Left pillar brick lines
+      for (let y = 24; y < 70; y += 8) {
+        rect(10, y, 12, 1, STONE_DARK);
+      }
+
+      // Right pillar (mirror)
+      rect(58, 18, 12, 56, STONE_MID);
+      rect(58, 18, 2,  56, STONE_HI);
+      rect(68, 18, 2,  56, STONE_DARK);
+      rect(56, 14, 16, 4, STONE_LITE);
+      rect(56, 14, 16, 1, STONE_HI);
+      rect(56, 17, 16, 1, STONE_DARK);
+      rect(56, 70, 16, 4, STONE_LITE);
+      rect(56, 70, 16, 1, STONE_HI);
+      rect(56, 73, 16, 1, STONE_DARK);
+      for (let y = 24; y < 70; y += 8) {
+        rect(58, y, 12, 1, STONE_DARK);
+      }
+
+      // Arch — stepped pixel arch spanning between pillars (x: 22..58)
+      // Arch sits above the opening, tapering to a peak.
+      const archSteps = [
+        // [y, xStart, xEnd]
+        [13, 34, 46],
+        [11, 32, 48],
+        [ 9, 30, 50],
+        [ 8, 28, 52],
+        [ 7, 26, 54],
+        [ 6, 24, 56],
+      ];
+      // Fill arch body
+      for (const [y, x1, x2] of archSteps) {
+        rect(x1, y, x2 - x1, 2, STONE_LITE);
+      }
+      // Arch underside shadow
+      rect(26, 14, 28, 2, STONE_DARK);
+      // Connect arch to pillar tops
+      rect(22, 14, 4, 4, STONE_LITE);
+      rect(54, 14, 4, 4, STONE_LITE);
+
+      // Keystone
+      rect(38, 6, 4, 8, STONE_HI);
+      rect(38, 6, 1, 8, STONE_LITE);
+      rect(41, 6, 1, 8, STONE_DARK);
+
+      // Opening / gateway background (darker — the void beyond the gate)
+      rect(22, 18, 36, 56, SHADOW);
+
+      // Iron portcullis — vertical bars
+      for (let i = 0; i < 6; i++) {
+        const bx = 24 + i * 6;
+        rect(bx, 18, 2, 56, IRON_MID);
+        rect(bx, 18, 1, 56, IRON_DARK); // left shadow on each bar
+      }
+      // Horizontal crossbars
+      rect(22, 30, 36, 2, IRON_MID);
+      rect(22, 30, 36, 1, IRON_DARK);
+      rect(22, 50, 36, 2, IRON_MID);
+      rect(22, 50, 36, 1, IRON_DARK);
+      rect(22, 70, 36, 2, IRON_MID);
+      rect(22, 70, 36, 1, IRON_DARK);
+
+      // Spike tips on top of bars (poking above the arch opening)
+      for (let i = 0; i < 6; i++) {
+        const bx = 24 + i * 6;
+        rect(bx, 17, 2, 1, IRON_MID);
+      }
+    })();
+  </script>
+</body>
+</html>
