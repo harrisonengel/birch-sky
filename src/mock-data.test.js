@@ -1,29 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MOCK_RESULTS, generateBuyRequest } from './mock-data.js';
-
-describe('MOCK_RESULTS', () => {
-  it('contains entries with the expected shape', () => {
-    expect(MOCK_RESULTS.length).toBeGreaterThan(0);
-    for (const r of MOCK_RESULTS) {
-      expect(r).toMatchObject({
-        id: expect.any(Number),
-        title: expect.any(String),
-        seller: expect.any(String),
-        description: expect.any(String),
-        price: expect.any(Number),
-        trustScore: expect.any(Number),
-      });
-      expect(r.trustScore).toBeGreaterThanOrEqual(0);
-      expect(r.trustScore).toBeLessThanOrEqual(100);
-      expect(r.price).toBeGreaterThan(0);
-    }
-  });
-
-  it('has unique ids', () => {
-    const ids = MOCK_RESULTS.map((r) => r.id);
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-});
+import { generateBuyRequest } from './mock-data.js';
 
 describe('generateBuyRequest', () => {
   it('uses the full query as title when short', () => {

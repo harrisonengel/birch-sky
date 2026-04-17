@@ -1,3 +1,17 @@
+# Top-level end-to-end demo stack.
+#
+#   docker compose up --build
+#
+# Wait until the `seed` service exits 0, then open http://localhost:5173.
+#
+# Services:
+#   postgres, opensearch, minio — infra
+#   market-platform             — Go marketplace API (port 8080, MCP on 8081)
+#   seed                        — oneshot; runs `iecli seed` once market-platform is healthy
+#   harness                     — Python buyer-agent sandbox runner (internal 8000)
+#   agent-prepper               — Python clarification service (internal 8002)
+#   frontend                    — Vite dev server (5173)
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -20,16 +34,7 @@ services:
     environment:
       - discovery.type=single-node
       - DISABLE_SECURITY_PLUGIN=true
-      - plugins.security.disabled=true
-      # Bumped from 512m → 2g because the ML Commons text_embedding
-      # pipeline loads a sentence-transformer model into native
-      # memory. 512m was enough for BM25 + raw kNN but OOMs the
-      # JVM on model deploy.
       - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
-      - knn.plugin.enabled=true
-      # ML Commons knobs needed for the pre-trained model to deploy
-      # on a single-node cluster with no dedicated ML node and
-      # without per-model access control.
       - plugins.ml_commons.only_run_on_ml_node=false
       - plugins.ml_commons.allow_registering_model_via_url=true
       - plugins.ml_commons.model_access_control_enabled=false
@@ -63,11 +68,10 @@ services:
 
   market-platform:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ./src/market-platform
     ports:
       - "8080:8080"
-      - "8081:8081"
+      - "8088:8081"
     environment:
       DATABASE_URL: postgres://ieuser:iepass@postgres:5432/iemarket?sslmode=disable
       OPENSEARCH_URL: http://opensearch:9200
@@ -90,17 +94,34 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-      # First boot includes downloading + deploying the ML embedding
-      # model into OpenSearch (~80MB). Give the service up to 5
-      # minutes before health checks start counting toward unhealthy.
+      # First boot downloads + deploys the ML embedding model into
+      # OpenSearch (~80MB). Give it up to 5 minutes before health
+      # checks start counting toward unhealthy.
       start_period: 300s
 
-  agent-harness:
+  # Oneshot container: waits for market-platform to be healthy, then runs
+  # `iecli seed` once. Reuses the market-platform Dockerfile so the iecli
+  # binary is available at /usr/local/bin/iecli. On re-up without `down
+  # -v`, seller creation errors on duplicate email — wipe volumes for a
+  # fresh seed.
+  seed:
     build:
-      context: ../harness
-      dockerfile: Dockerfile
+      context: ./src/market-platform
+    depends_on:
+      market-platform:
+        condition: service_healthy
+    entrypoint: ["/usr/local/bin/iecli"]
+    command:
+      - "--api=http://market-platform:8080"
+      - "--database-url=postgres://ieuser:iepass@postgres:5432/iemarket?sslmode=disable"
+      - "seed"
+    restart: "no"
+
+  harness:
+    build:
+      context: ./src/harness
     ports:
-      - "8000:8000"
+      - "8081:8000"
     environment:
       MARKET_PLATFORM_URL: http://market-platform:8080
       MODEL_NAME: claude-sonnet-4-5
@@ -108,27 +129,32 @@ services:
     depends_on:
       market-platform:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")' || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
 
   agent-prepper:
     build:
-      context: ../agent_prepper
-      dockerfile: Dockerfile
+      context: ./src/agent_prepper
     ports:
-      - "8002:8002"
+      - "8082:8002"
     environment:
       MODEL_NAME: claude-sonnet-4-5
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       PREPPER_MAX_TURNS: "6"
-    healthcheck:
-      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8002/health\")' || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "5173:5173"
+    environment:
+      MARKET_PLATFORM_URL: http://market-platform:8080
+      HARNESS_URL: http://harness:8000
+      PREPPER_URL: http://agent-prepper:8002
+      VITE_AUTH_MODE: local
+    depends_on:
+      - market-platform
+      - harness
+      - agent-prepper
 
 volumes:
   pgdata:

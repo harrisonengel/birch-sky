@@ -11,9 +11,8 @@ import (
 )
 
 func RegisterRoutes(r chi.Router, listingSvc *service.ListingService, turnMarketSvc *service.TurnMarketService, purchaseSvc *service.PurchaseService, buyOrderSvc *service.BuyOrderService) {
-	r.Use(CORS)
-
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(CORS)
 		// Sellers
 		sellerHandler := &SellerHandler{svc: listingSvc}
 		r.Post("/sellers", sellerHandler.Create)

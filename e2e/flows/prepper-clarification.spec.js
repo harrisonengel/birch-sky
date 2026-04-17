@@ -10,7 +10,6 @@ test.describe('Prepper clarification flow', () => {
     let respondCallCount = 0;
     let enterPayload = null;
 
-    // Stub the prepper start: ask one clarifying question.
     await page.route('**/api/prepper/start', async (route) => {
       await route.fulfill({
         status: 200,
@@ -24,7 +23,6 @@ test.describe('Prepper clarification flow', () => {
       });
     });
 
-    // Stub the prepper respond: finalize on the first answer.
     await page.route('**/api/prepper/respond', async (route) => {
       respondCallCount += 1;
       await route.fulfill({
@@ -71,11 +69,6 @@ test.describe('Prepper clarification flow', () => {
 
     await page.goto('/?e2e=1');
 
-    // Demo toggle defaults to "auto" — that's the only mode that engages
-    // the prepper. Make it explicit for clarity.
-    await page.locator('#demo-mode').selectOption('auto');
-
-    // Turn 1: buyer sends a vague initial query.
     await page.locator('#chat-input').fill('grocery data');
     await page.locator('#chat-send').click();
 
@@ -84,7 +77,6 @@ test.describe('Prepper clarification flow', () => {
       page.getByText('What region should the data cover?')
     ).toBeVisible({ timeout: 10_000 });
 
-    // Turn 2: buyer answers; prepper finalizes and we transition into search.
     await page.locator('#chat-input').fill('United States, last 12 months');
     await page.locator('#chat-send').click();
 
@@ -102,24 +94,43 @@ test.describe('Prepper clarification flow', () => {
     expect(enterPayload.query).toContain('US');
     expect(enterPayload.query).toContain('weekly cadence');
 
-    // Result card should render.
     await expect(page.getByText('US Grocery Price Index')).toBeVisible({
       timeout: 15_000,
     });
 
-    // We only expect /respond to have been called once.
     expect(respondCallCount).toBe(1);
   });
 
-  test('forced demo mode bypasses the prepper entirely (regression guard)', async ({ page }) => {
+  test('prepper 503 drops to direct search without blocking the flow', async ({ page }) => {
     let prepperHit = false;
     await page.route('**/api/prepper/**', async (route) => {
       prepperHit = true;
       await route.fulfill({ status: 503, body: '' });
     });
 
+    await page.route(/\/agent\/enter$/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          results: [
+            {
+              listing_id: 'lst-1',
+              title: 'Fallback Listing',
+              description: 'seen when prepper is unavailable',
+              category: 'pricing',
+              seller_name: 'TestSeller',
+              price_cents: 199,
+              score: 0.5,
+            },
+          ],
+          total: 1,
+          mode: 'text',
+        }),
+      });
+    });
+
     await page.goto('/?e2e=1');
-    await page.locator('#demo-mode').selectOption('results');
 
     await page.locator('#chat-input').fill('pricing data for electronics');
     await page.locator('#chat-send').click();
@@ -127,9 +138,7 @@ test.describe('Prepper clarification flow', () => {
     await expect(page.getByText(/I found several relevant sources/i)).toBeVisible({
       timeout: 15_000,
     });
-
-    // Prepper must NOT be called when the demo toggle forces a path —
-    // existing deterministic tests depend on this.
-    expect(prepperHit).toBe(false);
+    await expect(page.getByText('Fallback Listing')).toBeVisible();
+    expect(prepperHit).toBe(true);
   });
 });

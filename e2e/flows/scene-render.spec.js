@@ -43,6 +43,35 @@ async function getCanvasSize(page) {
 
 test.describe('scene canvas rendering', () => {
   test.beforeEach(async ({ page }) => {
+    // The scene runs its animation regardless of backend state, but the
+    // "building stays drawn after a query" test below triggers runFlow,
+    // which hits /api/prepper/start and the harness /agent/enter proxy.
+    // Stub both so the test doesn't depend on a live stack.
+    await page.route('**/api/prepper/**', async (route) => {
+      await route.fulfill({ status: 503, body: '' });
+    });
+    await page.route(/\/agent\/enter$/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          results: [
+            {
+              listing_id: 'lst-scene',
+              title: 'Pricing Index',
+              description: 'stub',
+              category: 'pricing',
+              seller_name: 'StubCo',
+              price_cents: 199,
+              score: 0.5,
+            },
+          ],
+          total: 1,
+          mode: 'text',
+        }),
+      });
+    });
+
     await page.goto('/?e2e=1');
     // Let the rAF loop run a few frames so the first render is committed.
     await page.waitForFunction(() => {
@@ -101,7 +130,6 @@ test.describe('scene canvas rendering', () => {
   test('the building stays drawn after a query is sent', async ({ page }) => {
     // Regression guard: the original "building went missing" bug. Run a full
     // happy-path query and re-check the building region after the flow ends.
-    await page.locator('#demo-mode').selectOption('results');
     await page.locator('#chat-input').fill('pricing data');
     await page.locator('#chat-send').click();
 
