@@ -4,16 +4,21 @@ import { initChat } from './chat.js';
 import { initDemoFlow } from './demo-flow.js';
 
 async function init() {
-  // E2E bypass: skip the Cognito gate when ?e2e=1 is set so Playwright can
-  // exercise the demo flow without real credentials. Mirrors the #demo-mode
-  // testing hook used by demo-flow.js.
+  // Two bypass paths around the Cognito gate:
+  //   - ?e2e=1 URL param: Playwright runs without real credentials.
+  //   - VITE_AUTH_MODE=local: local docker-compose demo runs without
+  //     a Cognito user pool configured at all.
   //
-  // The auth modules are dynamically imported so that test environments
-  // without VITE_COGNITO_* env vars don't crash on the synchronous
-  // CognitoUserPool construction in auth/cognito.js.
+  // Both paths dynamically import auth modules only when needed, so
+  // environments without VITE_COGNITO_* env vars don't crash on
+  // synchronous CognitoUserPool construction in auth/cognito.js.
   const e2eBypass = new URLSearchParams(window.location.search).get('e2e') === '1';
+  const localBypass = import.meta.env.VITE_AUTH_MODE === 'local';
 
-  if (!e2eBypass) {
+  if (localBypass) {
+    const { applyLocalBypass } = await import('./auth/local-bypass.js');
+    applyLocalBypass();
+  } else if (!e2eBypass) {
     const { ensureSession } = await import('./auth/session.js');
     const { showAuthModal } = await import('./auth/ui.js');
     const session = await ensureSession();

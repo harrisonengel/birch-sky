@@ -266,11 +266,31 @@ body {
 
 /* Buy Request Form */
 .buy-request-form {
+  position: relative;
   background: #0d0d0d;
   border: 1px solid #2a2a2a;
   border-radius: 6px;
   padding: 14px;
   margin-top: 8px;
+}
+
+.buy-request-form .br-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: #777;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.buy-request-form .br-close:hover {
+  color: #ddd;
+  background: #1a1a1a;
 }
 
 .buy-request-form label {
@@ -334,30 +354,6 @@ body {
   0%, 20% { opacity: 0.2; }
   50% { opacity: 1; }
   80%, 100% { opacity: 0.2; }
-}
-
-/* Demo toggle */
-#demo-toggle {
-  position: fixed;
-  top: 12px;
-  right: 16px;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  color: #555;
-}
-
-#demo-toggle select {
-  background: #111;
-  border: 1px solid #333;
-  color: #888;
-  padding: 4px 8px;
-  font-family: inherit;
-  font-size: 11px;
-  border-radius: 3px;
-  outline: none;
 }
 
 /* Fade-in for result cards */
