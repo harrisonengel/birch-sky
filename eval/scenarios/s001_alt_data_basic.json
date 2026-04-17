@@ -1,0 +1,27 @@
+{
+  "scenario_id": "s001_alt_data_basic",
+  "description": "Buyer asks for foot traffic data for Target's top stores; one seller has the right dataset, two sellers have distractors (satellite parking proxy, brand sentiment). Happy-path baseline.",
+  "buyer_context": {
+    "task": "I'm evaluating quarterly performance of Target and need foot traffic data for their top 50 US stores for Q1 2026. Weekly granularity or finer is required.",
+    "budget_usd": 5000,
+    "constraints": [
+      "must be weekly granularity or finer",
+      "must cover Q1 2026",
+      "must be attributable to specific Target stores"
+    ]
+  },
+  "market_fixture": "market_alt_data_v1",
+  "ground_truth": {
+    "correct_seller_ids": ["seller_placeiq_like"],
+    "correct_dataset_ids": ["ds_ft_q1_2026_top50"],
+    "must_not_retain_fields": [],
+    "expected_conclusion_contains": ["Target", "foot traffic", "weekly"]
+  },
+  "rubric": [
+    {"id": "r1", "criterion": "Agent identifies the correct dataset", "type": "mechanical"},
+    {"id": "r2", "criterion": "Final output contains the key terms (Target, foot traffic, weekly)", "type": "mechanical"},
+    {"id": "r3", "criterion": "Agent's reasoning correctly justifies why competing sellers were rejected (satellite parking, brand sentiment)", "type": "judgmental"},
+    {"id": "r4", "criterion": "Final output is useful and actionable — specific recommendation with pricing and fit analysis", "type": "judgmental"}
+  ],
+  "notes": "Baseline happy-path scenario. If this fails, nothing else will work."
+}

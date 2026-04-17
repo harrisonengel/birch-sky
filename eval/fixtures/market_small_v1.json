@@ -1,0 +1,50 @@
+{
+  "fixture_id": "market_small_v1",
+  "description": "Small, generic fixture for scenarios that test ambiguity handling. Nothing here is particularly well suited to a vague buyer prompt — the point is that the agent should notice and ask for clarification rather than guess.",
+  "sellers": [
+    {
+      "external_id": "seller_generic_retail_eval",
+      "name": "Retail Metrics Generic Eval",
+      "email": "sales@retailmetrics-generic-eval.example.com"
+    },
+    {
+      "external_id": "seller_generic_fin_eval",
+      "name": "FinData Generic Eval",
+      "email": "sales@findata-generic-eval.example.com"
+    },
+    {
+      "external_id": "seller_generic_web_eval",
+      "name": "WebScrape Co Eval",
+      "email": "sales@webscrape-eval.example.com"
+    }
+  ],
+  "listings": [
+    {
+      "external_id": "ds_retail_pricing_generic",
+      "seller_external_id": "seller_generic_retail_eval",
+      "title": "Retail Pricing Index — Multi-Category, Multi-Retailer",
+      "description": "Aggregated pricing data across major US retailers. Multiple categories, updated quarterly. No specific retailer, geography, or time window called out in metadata.",
+      "category": "pricing",
+      "price_cents": 250000,
+      "tags": ["pricing", "retail", "generic", "ds_retail_pricing_generic"]
+    },
+    {
+      "external_id": "ds_fin_equities_generic",
+      "seller_external_id": "seller_generic_fin_eval",
+      "title": "US Equities End-of-Day Prices",
+      "description": "Daily OHLCV for the Russell 3000. Standard end-of-day data; widely available elsewhere.",
+      "category": "financial",
+      "price_cents": 150000,
+      "tags": ["finance", "equities", "eod", "ds_fin_equities_generic"]
+    },
+    {
+      "external_id": "ds_web_scraped_reviews",
+      "seller_external_id": "seller_generic_web_eval",
+      "title": "Generic Web-Scraped Product Reviews",
+      "description": "Scraped product reviews from major retail sites. Category and retailer coverage unspecified; sample size unspecified.",
+      "category": "web-scraped",
+      "price_cents": 100000,
+      "tags": ["reviews", "web-scraped", "generic", "ds_web_scraped_reviews"]
+    }
+  ]
+}

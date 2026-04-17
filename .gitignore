@@ -23,3 +23,11 @@ __pycache__/
 *.pyc
 *.egg-info/
 .venv/
+
+# Eval harness — traces and full prompts are generated artifacts.
+eval/runs/*
+!eval/runs/.gitkeep
+!eval/runs/prompts/
+eval/runs/prompts/*
+!eval/runs/prompts/.gitkeep
+eval/config.eval.yaml

@@ -1,0 +1,13 @@
+# Copy to eval/config.eval.yaml and fill in values.
+# ie_eval reuses harness.config.load on this file — same shape as
+# config.example.yaml, pointed at the dedicated eval environment.
+
+model:
+  name: claude-sonnet-4-6
+  api_key_env: ANTHROPIC_API_KEY
+
+opensearch:
+  url: http://localhost:9200
+  index: listings_eval
+  # user: admin
+  # pass: admin

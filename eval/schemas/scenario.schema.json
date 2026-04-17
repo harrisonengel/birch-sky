@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Scenario",
+  "type": "object",
+  "required": ["scenario_id", "description", "buyer_context", "market_fixture", "ground_truth", "rubric"],
+  "properties": {
+    "scenario_id": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+    "description": {"type": "string"},
+    "buyer_context": {
+      "type": "object",
+      "required": ["task"],
+      "properties": {
+        "task": {"type": "string"},
+        "budget_usd": {"type": "number"},
+        "constraints": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "market_fixture": {"type": "string"},
+    "ground_truth": {
+      "type": "object",
+      "properties": {
+        "correct_seller_ids": {"type": "array", "items": {"type": "string"}},
+        "correct_dataset_ids": {"type": "array", "items": {"type": "string"}},
+        "must_not_retain_fields": {"type": "array", "items": {"type": "string"}},
+        "expected_conclusion_contains": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "rubric": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "criterion", "type"],
+        "properties": {
+          "id": {"type": "string"},
+          "criterion": {"type": "string"},
+          "type": {"enum": ["mechanical", "judgmental"]}
+        }
+      }
+    },
+    "notes": {"type": "string"}
+  }
+}

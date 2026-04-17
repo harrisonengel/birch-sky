@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trace",
+  "type": "object",
+  "required": ["run_id", "scenario_id", "timestamp", "harness_config", "resolved_inputs", "agent_steps", "final_output"],
+  "properties": {
+    "run_id": {"type": "string"},
+    "scenario_id": {"type": "string"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "code_version": {"type": "string"},
+    "harness_config": {
+      "type": "object",
+      "required": ["model", "system_prompt_hash"],
+      "properties": {
+        "model": {"type": "string"},
+        "system_prompt_hash": {"type": "string"},
+        "opensearch_url": {"type": "string"},
+        "opensearch_index": {"type": "string"},
+        "seed_fixture_hash": {"type": "string"},
+        "note": {"type": "string"}
+      }
+    },
+    "resolved_inputs": {"type": "object"},
+    "agent_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["step", "kind"],
+        "properties": {
+          "step": {"type": "integer"},
+          "kind": {"enum": ["reasoning", "tool_call"]},
+          "content": {"type": "string"},
+          "tool": {"type": "string"},
+          "input": {},
+          "output": {}
+        }
+      }
+    },
+    "final_output": {"type": "string"},
+    "exception": {
+      "type": ["object", "null"],
+      "properties": {
+        "type": {"type": "string"},
+        "message": {"type": "string"},
+        "traceback": {"type": "string"}
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Verdict",
+  "type": "object",
+  "required": ["run_id", "scenario_id", "judge", "judged_at", "rubric_results", "overall"],
+  "properties": {
+    "run_id": {"type": "string"},
+    "scenario_id": {"type": "string"},
+    "judge": {"type": "string"},
+    "judged_at": {"type": "string", "format": "date-time"},
+    "rubric_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "pass"],
+        "properties": {
+          "id": {"type": "string"},
+          "criterion": {"type": "string"},
+          "type": {"enum": ["mechanical", "judgmental"]},
+          "pass": {"type": ["boolean", "null"]},
+          "note": {"type": "string"}
+        }
+      }
+    },
+    "overall": {"enum": ["pass", "fail", "mixed", "pending"]},
+    "notes_for_next_iteration": {"type": "string"}
+  }
+}
