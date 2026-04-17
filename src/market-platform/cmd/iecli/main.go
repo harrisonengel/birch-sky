@@ -29,7 +29,7 @@ func main() {
 	root.PersistentFlags().StringVar(&databaseURL, "database-url", "", "Postgres connection string (default: $DATABASE_URL or local docker)")
 
 	root.AddCommand(seedCmd())
-	root.AddCommand(enterCmd())
+	root.AddCommand(searchCmd())
 	root.AddCommand(queryCmd)
 	root.AddCommand(mlStatusCmd())
 
@@ -367,19 +367,19 @@ func uploadData(listingID, csvContent, title string) error {
 }
 
 // ---------------------------------------------------------------------------
-// enter
+// search
 // ---------------------------------------------------------------------------
 
-func enterCmd() *cobra.Command {
+func searchCmd() *cobra.Command {
 	var mode string
 	var perPage int
 	cmd := &cobra.Command{
-		Use:   "enter [query]",
-		Short: "Enter the marketplace and run a search (text | vector | hybrid)",
+		Use:   "search [query]",
+		Short: "Search the marketplace (text | vector | hybrid)",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := strings.Join(args, " ")
-			return runEnter(query, mode, perPage)
+			return runSearch(query, mode, perPage)
 		},
 	}
 	cmd.Flags().StringVar(&mode, "mode", "hybrid", "search mode: text, vector (semantic), or hybrid")
@@ -387,22 +387,22 @@ func enterCmd() *cobra.Command {
 	return cmd
 }
 
-func runEnter(query, mode string, perPage int) error {
+func runSearch(query, mode string, perPage int) error {
 	body, _ := json.Marshal(map[string]interface{}{
 		"query":    query,
 		"mode":     mode,
 		"per_page": perPage,
 	})
 
-	resp, err := http.Post(apiBase+"/api/v1/enter", "application/json", bytes.NewReader(body))
+	resp, err := http.Post(apiBase+"/api/v1/search", "application/json", bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("enter request: %w", err)
+		return fmt.Errorf("search request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("enter failed (%d): %s", resp.StatusCode, string(data))
+		return fmt.Errorf("search failed (%d): %s", resp.StatusCode, string(data))
 	}
 
 	var result struct {

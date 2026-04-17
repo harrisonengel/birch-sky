@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 // The scripted-overlay demo is gone — the frontend now hits a real backend.
-// These tests mock the HTTP surface the demo-flow calls (prepper, market
+// These tests mock the HTTP surface the demo-flow calls (prepper, harness
 // enter, purchases, buy-orders) so they stay deterministic and isolated
 // from whether the docker-compose stack is actually running.
 
@@ -25,7 +25,7 @@ test.describe('Information Exchange demo flow', () => {
   test('happy path: query returns purchasable results', async ({ page }) => {
     await stubPrepperDisabled(page);
 
-    await page.route(/\/api\/v1\/enter$/, async (route) => {
+    await page.route(/\/agent\/enter$/, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -91,7 +91,7 @@ test.describe('Information Exchange demo flow', () => {
   test('no-results path: agent offers a buy request form', async ({ page }) => {
     await stubPrepperDisabled(page);
 
-    await page.route(/\/api\/v1\/enter$/, async (route) => {
+    await page.route(/\/agent\/enter$/, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

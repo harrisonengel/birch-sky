@@ -110,6 +110,11 @@ export function initDemoFlow(scene, chat) {
     }
   }
 
+  // Build the search string passed into the harness /enter endpoint. If a
+  // prepper Briefing exists, fold its goal_summary + selection_criteria into
+  // the query so the marketplace search reflects everything the buyer
+  // clarified — the briefing is the only thing that crosses into the walled
+  // system.
   function buildEnterQuery(query) {
     if (!prepperBriefing) return query;
     const parts = [prepperBriefing.goal_summary || query];

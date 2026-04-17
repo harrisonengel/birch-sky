@@ -40,7 +40,7 @@ func Serve(addr string, turnMarketSvc *service.TurnMarketService, listingRepo *p
 		bucket:      bucket,
 	}
 
-	registerEnterTool(s, deps)
+	registerSearchTool(s, deps)
 	registerGetListingTool(s, deps)
 	registerAnalyzeDataTool(s, deps)
 
@@ -50,45 +50,45 @@ func Serve(addr string, turnMarketSvc *service.TurnMarketService, listingRepo *p
 	return http.ListenAndServe(addr, handler)
 }
 
-// --- enter_marketplace ---
+// --- search ---
 
-type EnterInput struct {
+type SearchInput struct {
 	Query         string  `json:"query" jsonschema:"Natural language query"`
 	Category      *string `json:"category,omitempty" jsonschema:"Filter by category"`
 	MaxPriceCents *int    `json:"max_price_cents,omitempty" jsonschema:"Maximum price in cents"`
 }
 
-type EnterOutput struct {
+type SearchOutput struct {
 	Text string `json:"text"`
 }
 
-func registerEnterTool(s *mcpsdk.Server, deps *toolDeps) {
+func registerSearchTool(s *mcpsdk.Server, deps *toolDeps) {
 	mcpsdk.AddTool(s, &mcpsdk.Tool{
-		Name:        "enter_marketplace",
-		Description: "Enter the Information Exchange marketplace to find data listings using natural language. Returns matching listings ranked by relevance.",
-	}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input EnterInput) (*mcpsdk.CallToolResult, EnterOutput, error) {
+		Name:        "search",
+		Description: "Search the Information Exchange marketplace for data listings using natural language. Returns matching listings ranked by relevance.",
+	}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input SearchInput) (*mcpsdk.CallToolResult, SearchOutput, error) {
 		if input.Query == "" {
 			result := &mcpsdk.CallToolResult{}
 			result.SetError(fmt.Errorf("query is required"))
-			return result, EnterOutput{}, nil
+			return result, SearchOutput{}, nil
 		}
 
-		enterReq := service.EnterRequest{
+		searchReq := service.SearchRequest{
 			Query: input.Query,
 			Mode:  "hybrid",
 		}
 		if input.Category != nil {
-			enterReq.Category = *input.Category
+			searchReq.Category = *input.Category
 		}
 		if input.MaxPriceCents != nil {
-			enterReq.MaxPriceCents = input.MaxPriceCents
+			searchReq.MaxPriceCents = input.MaxPriceCents
 		}
 
-		resp, err := deps.turnMarketSvc.Enter(ctx, enterReq)
+		resp, err := deps.turnMarketSvc.Search(ctx, searchReq)
 		if err != nil {
 			result := &mcpsdk.CallToolResult{}
-			result.SetError(fmt.Errorf("enter failed: %v", err))
-			return result, EnterOutput{}, nil
+			result.SetError(fmt.Errorf("search failed: %v", err))
+			return result, SearchOutput{}, nil
 		}
 
 		var sb strings.Builder
@@ -106,7 +106,7 @@ func registerEnterTool(s *mcpsdk.Server, deps *toolDeps) {
 		text := sb.String()
 		return &mcpsdk.CallToolResult{
 			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: text}},
-		}, EnterOutput{Text: text}, nil
+		}, SearchOutput{Text: text}, nil
 	})
 }
 

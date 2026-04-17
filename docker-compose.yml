@@ -123,12 +123,11 @@ services:
     ports:
       - "8081:8000"
     environment:
-      OPENSEARCH_URL: http://opensearch:9200
-      OPENSEARCH_INDEX: listings
+      MARKET_PLATFORM_URL: http://market-platform:8080
       MODEL_NAME: claude-sonnet-4-5
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on:
-      opensearch:
+      market-platform:
         condition: service_healthy
 
   agent-prepper:

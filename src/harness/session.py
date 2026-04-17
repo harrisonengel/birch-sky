@@ -21,7 +21,7 @@ class Session:
 def _build_instructions(starting_context: dict) -> str:
     parts = [
         "You are a buyer's agent on the Information Exchange marketplace.",
-        "Use the search_opensearch tool to find data listings that match the buyer's needs.",
+        "Use the search tool to find data listings that match the buyer's needs.",
     ]
     if bg := starting_context.get("background"):
         parts.append(f"\n## Background\n{bg}")
