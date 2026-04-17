@@ -1,5 +1,9 @@
-// Thin API client for the market-platform backend.
-// In dev, Vite proxies /api/v1 -> localhost:8080 and /agent -> localhost:8000.
+// Thin API client. The frontend's only path into the agent layer is the
+// harness `/enter` endpoint — direct calls to the market platform's search
+// API are not allowed. Other market-platform endpoints (listings, purchases,
+// buy-orders) are still called directly for now since they are transactional,
+// not agent-mediated. In dev, Vite proxies /api/v1 -> market-platform :8080
+// and /agent -> harness :8000.
 
 const API_BASE = '/api/v1';
 const AGENT_BASE = '/agent';
@@ -27,12 +31,14 @@ async function get(url) {
 }
 
 /**
- * Enter the marketplace to find data listings.
+ * Enter the marketplace via the agent harness. The harness is the only
+ * service the frontend talks to for catalog access; it forwards to the
+ * market platform's /api/v1/search endpoint internally.
  * @param {string} query - Natural language query
  * @returns {Promise<{results: Array, total: number, mode: string}>}
  */
 export async function enterMarketplace(query) {
-  return post(`${API_BASE}/enter`, {
+  return post(`${AGENT_BASE}/enter`, {
     query,
     mode: 'text',
     per_page: 10,

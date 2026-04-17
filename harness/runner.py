@@ -26,12 +26,7 @@ def execute(config: HarnessConfig, session: Session, user_input: str) -> str:
     Returns the agent's final text response, or an empty string if the
     loop terminated without producing one.
     """
-    tools.configure(
-        url=config.opensearch_url,
-        index=config.opensearch_index,
-        user=config.opensearch_user,
-        password=config.opensearch_pass,
-    )
+    tools.configure(market_platform_url=config.market_platform_url)
 
     client = Anthropic(api_key=config.api_key)
     messages: list[dict] = [{"role": "user", "content": user_input}]

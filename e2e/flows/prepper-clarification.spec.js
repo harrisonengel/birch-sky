@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test';
 
 // These tests cover the agent-prepper integration in src/demo-flow.js. The
 // real agent-prepper service is not running during e2e, so we mock its HTTP
-// surface with page.route. The marketplace /api/v1/enter endpoint is also
-// mocked so the test stays isolated from market-platform availability.
+// surface with page.route. The harness /agent/enter endpoint is also mocked
+// so the test stays isolated from harness/market-platform availability.
 
 test.describe('Prepper clarification flow', () => {
   test('multi-turn clarification then results, with briefing folded into the search query', async ({ page }) => {
@@ -45,8 +45,8 @@ test.describe('Prepper clarification flow', () => {
       });
     });
 
-    // Stub the marketplace enter so we can assert the briefing was folded in.
-    await page.route(/\/api\/v1\/enter$/, async (route) => {
+    // Stub the harness enter so we can assert the briefing was folded in.
+    await page.route(/\/agent\/enter$/, async (route) => {
       enterPayload = JSON.parse(route.request().postData() || '{}');
       await route.fulfill({
         status: 200,
@@ -92,11 +92,11 @@ test.describe('Prepper clarification flow', () => {
       page.getByText(/Got it\. Searching the Exchange for: Track US grocery prices weekly/)
     ).toBeVisible({ timeout: 10_000 });
 
-    // The marketplace search should have been called with a query that
-    // includes the briefing's goal_summary + selection_criteria — that's
-    // the only way the buyer's clarified intent crosses into the search.
-    // runFlow plays the agent-runs-to-building animation (~2-3s) before
-    // calling /api/v1/enter, so allow a generous polling window.
+    // The harness enter should have been called with a query that includes
+    // the briefing's goal_summary + selection_criteria — that's the only way
+    // the buyer's clarified intent crosses into the search. runFlow plays the
+    // agent-runs-to-building animation (~2-3s) before calling /agent/enter,
+    // so allow a generous polling window.
     await expect.poll(() => enterPayload, { timeout: 15_000 }).not.toBeNull();
     expect(enterPayload.query).toContain('Track US grocery prices weekly');
     expect(enterPayload.query).toContain('US');

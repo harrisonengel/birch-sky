@@ -28,9 +28,9 @@ func RegisterRoutes(r chi.Router, listingSvc *service.ListingService, turnMarket
 		r.Delete("/listings/{id}", listingHandler.Delete)
 		r.Post("/listings/{id}/upload", listingHandler.Upload)
 
-		// Enter
-		enterHandler := &EnterHandler{svc: turnMarketSvc}
-		r.Post("/enter", enterHandler.Enter)
+		// Search
+		searchHandler := &SearchHandler{svc: turnMarketSvc}
+		r.Post("/search", searchHandler.Search)
 
 		// Purchases
 		purchaseHandler := &PurchaseHandler{svc: purchaseSvc}
