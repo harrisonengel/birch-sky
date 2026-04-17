@@ -1,4 +1,4 @@
-import { MOCK_RESULTS, generateBuyRequest } from './mock-data.js';
+import { generateBuyRequest } from './mock-data.js';
 
 export function initChat(panel) {
   const messagesEl = panel.querySelector('#chat-messages') || document.getElementById('chat-messages');
@@ -85,6 +85,7 @@ export function initChat(panel) {
     const form = document.createElement('div');
     form.className = 'buy-request-form';
     form.innerHTML = `
+      <button type="button" class="br-close" aria-label="Dismiss buy request">×</button>
       <label>Request Title</label>
       <input type="text" class="br-title" value="${prefill.title}" />
       <label>Description</label>
@@ -104,6 +105,10 @@ export function initChat(panel) {
         expiration: form.querySelector('.br-expiry').value,
       };
       if (onBuyRequestSubmit) onBuyRequestSubmit(data);
+    });
+
+    form.querySelector('.br-close').addEventListener('click', () => {
+      container.remove();
     });
 
     container.appendChild(form);
