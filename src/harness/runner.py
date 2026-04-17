@@ -17,11 +17,20 @@ def run(config_path: str, session_path: str, user_input: str) -> None:
     print(result)
 
 
-def execute(config: HarnessConfig, session: Session, user_input: str) -> str:
+def execute(
+    config: HarnessConfig,
+    session: Session,
+    user_input: str,
+    trace: list | None = None,
+) -> str:
     """Run one agent invocation against the given config + session.
 
     This is the programmatic entry point — a future HTTP API would call
     this directly with in-memory objects rather than loading from disk.
+
+    If `trace` is provided, each reasoning text block and tool call is
+    appended as a step record. The final text block is returned (not
+    appended) so callers can store it separately as final_output.
 
     Returns the agent's final text response, or an empty string if the
     loop terminated without producing one.
@@ -50,8 +59,26 @@ def execute(config: HarnessConfig, session: Session, user_input: str) -> str:
         if response.stop_reason == "tool_use":
             tool_results = []
             for block in response.content:
+                if block.type == "text" and trace is not None:
+                    trace.append(
+                        {
+                            "step": len(trace) + 1,
+                            "kind": "reasoning",
+                            "content": block.text,
+                        }
+                    )
                 if block.type == "tool_use":
                     result = tools.dispatch(block.name, block.input or {})
+                    if trace is not None:
+                        trace.append(
+                            {
+                                "step": len(trace) + 1,
+                                "kind": "tool_call",
+                                "tool": block.name,
+                                "input": block.input,
+                                "output": result,
+                            }
+                        )
                     tool_results.append(
                         {
                             "type": "tool_result",
