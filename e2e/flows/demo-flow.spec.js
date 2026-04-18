@@ -30,19 +30,14 @@ test.describe('Information Exchange demo flow', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          results: [
+          buy_listings: [
             {
-              listing_id: 'lst-abc',
-              title: 'Consumer Electronics Pricing Index Q1 2026',
-              description: 'Aggregated pricing data across 12 major retailers',
-              category: 'pricing',
-              seller_name: 'RetailMetrics Inc.',
-              price_cents: 250,
-              score: 0.85,
+              id: 'lst-abc',
+              price: 250,
+              listing_description: 'Aggregated pricing data across 12 major retailers',
+              seller: 'RetailMetrics Inc.',
             },
           ],
-          total: 1,
-          mode: 'text',
         }),
       });
     });
@@ -95,7 +90,7 @@ test.describe('Information Exchange demo flow', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ results: [], total: 0, mode: 'text' }),
+        body: JSON.stringify({ buy_listings: [] }),
       });
     });
 

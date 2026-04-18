@@ -21,7 +21,13 @@ class Session:
 def _build_instructions(starting_context: dict) -> str:
     parts = [
         "You are a buyer's agent on the Information Exchange marketplace.",
-        "Use the search tool to find data listings that match the buyer's needs.",
+        "Use the `search` tool to find data listings that match the buyer's needs.",
+        "You MUST end every session by calling the `submit_buy_recommendation` "
+        "tool exactly once. Its `listings` argument is the final answer — pass "
+        "the {seller_id, listing_id} pairs the buyer should purchase, taken "
+        "verbatim from search results. If nothing is a good fit, submit an "
+        "empty listings array. Do not emit any other text as your final "
+        "message; only the tool call is returned to the buyer.",
     ]
     if bg := starting_context.get("background"):
         parts.append(f"\n## Background\n{bg}")

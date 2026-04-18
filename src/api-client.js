@@ -31,17 +31,23 @@ async function get(url) {
 }
 
 /**
- * Enter the marketplace via the agent harness. The harness is the only
- * service the frontend talks to for catalog access; it forwards to the
- * market platform's /api/v1/search endpoint internally.
- * @param {string} query - Natural language query
- * @returns {Promise<{results: Array, total: number, mode: string}>}
+ * Enter the marketplace via the agent harness. The harness runs the full
+ * multi-turn buyer agent loop and returns a hydrated list of recommended
+ * listings — it is the only path the frontend has into catalog data.
+ * @param {string} userInput - The buyer's query / instruction
+ * @param {object} [context] - {background, goal, constraints} for the agent
+ * @param {number} [maxTurns=20] - Cap on agent turns
+ * @returns {Promise<{buy_listings: Array<{id: string, price: number, listing_description: string, seller: string}>}>}
  */
-export async function enterMarketplace(query) {
+export async function enterMarketplace(userInput, context, maxTurns = 20) {
   return post(`${AGENT_BASE}/enter`, {
-    query,
-    mode: 'text',
-    per_page: 10,
+    starting_context: context || {
+      background: 'You are helping a buyer find data on the Information Exchange.',
+      goal: 'Find relevant data listings for the buyer to purchase.',
+      constraints: '',
+    },
+    user_input: userInput,
+    max_turns: maxTurns,
   });
 }
 
@@ -115,24 +121,6 @@ export async function respondPrepper(sessionID, answer) {
   return post(`/api/prepper/respond`, {
     session_id: sessionID,
     answer: answer,
-  });
-}
-
-/**
- * Run the buyer agent via the harness service.
- * @param {string} userInput
- * @param {object} context - {background, goal, constraints}
- * @returns {Promise<{response: string}>}
- */
-export async function runAgent(userInput, context) {
-  return post(`${AGENT_BASE}/run`, {
-    starting_context: context || {
-      background: 'You are helping a buyer find data on the Information Exchange.',
-      goal: 'Find relevant data listings.',
-      constraints: '',
-    },
-    user_input: userInput,
-    max_turns: 10,
   });
 }
 

@@ -48,14 +48,14 @@ function getBuyerID() {
 
 async function enterBackend(query) {
   const resp = await enterMarketplace(query);
-  if (!resp || !resp.results) return [];
-  return resp.results.map((r) => ({
-    id: r.listing_id,
-    title: r.title,
-    seller: r.seller_name || (r.category ? r.category.charAt(0).toUpperCase() + r.category.slice(1) + ' data' : 'Marketplace'),
-    description: r.description,
-    price: r.price_cents / 100,
-    trustScore: Math.min(99, 70 + Math.floor(r.score * 30)),
+  const listings = (resp && resp.buy_listings) || [];
+  return listings.map((r) => ({
+    id: r.id,
+    title: r.listing_description,
+    seller: r.seller || 'Marketplace',
+    description: r.listing_description,
+    price: (r.price || 0) / 100,
+    trustScore: 85,
   }));
 }
 

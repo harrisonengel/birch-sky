@@ -16,9 +16,9 @@ This lets the full purchase flow work in dev without Stripe credentials.
 **File:** `internal/payments/stripe.go` — add `StubProcessor` implementing `PaymentProcessor`.
 
 ### 2. Agent Harness HTTP Service
-Lift `harness/runner.py:execute()` into a FastAPI endpoint.
+Expose `harness/runner.py:execute()` behind a single FastAPI endpoint that hydrates the agent's recommendation before returning.
 
-- `POST /api/run` — `{starting_context, user_input, max_turns}` → `{response}`
+- `POST /api/enter` — `{starting_context, user_input, max_turns}` → `{buy_listings: [{id, price, listing_description, seller}]}`. Runs the full multi-turn tool-using agent loop; the agent must finish with `submit_buy_recommendation` and the harness deterministically hydrates the returned ids from the market platform.
 - Config from env vars (`ANTHROPIC_API_KEY`, `OPENSEARCH_URL`, `MODEL_NAME`)
 - Add `fastapi` + `uvicorn` to dependencies
 - New file: `harness/api.py`
@@ -36,8 +36,8 @@ Go CLI using cobra at `src/market-platform/cmd/iecli/`.
 
 ### 5. Frontend Wiring
 Replace mock data with real API calls:
-- Chat query → `POST /api/v1/enter` on market-platform
-- Result cards populated from enter response
+- Chat query → `POST /agent/enter` on the harness (proxied). Runs the full agent loop; the response is a hydrated `buy_listings` array.
+- Result cards populated from `buy_listings`
 - Buy button → `POST /api/v1/purchases` + `POST /api/v1/purchases/{id}/confirm`
 - Buy request form → `POST /api/v1/buy-orders`
 - New module: `src/api-client.js` — thin wrapper around fetch to market-platform

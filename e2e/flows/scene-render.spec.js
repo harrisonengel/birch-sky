@@ -55,19 +55,14 @@ test.describe('scene canvas rendering', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          results: [
+          buy_listings: [
             {
-              listing_id: 'lst-scene',
-              title: 'Pricing Index',
-              description: 'stub',
-              category: 'pricing',
-              seller_name: 'StubCo',
-              price_cents: 199,
-              score: 0.5,
+              id: 'lst-scene',
+              price: 199,
+              listing_description: 'Pricing Index — stub',
+              seller: 'StubCo',
             },
           ],
-          total: 1,
-          mode: 'text',
         }),
       });
     });

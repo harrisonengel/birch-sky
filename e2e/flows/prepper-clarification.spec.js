@@ -50,19 +50,14 @@ test.describe('Prepper clarification flow', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          results: [
+          buy_listings: [
             {
-              listing_id: 'lst-1',
-              title: 'US Grocery Price Index',
-              description: 'Weekly national grocery pricing',
-              category: 'pricing',
-              seller_name: 'RetailMetrics',
-              price_cents: 250,
-              score: 0.8,
+              id: 'lst-1',
+              price: 250,
+              listing_description: 'US Grocery Price Index — Weekly national grocery pricing',
+              seller: 'RetailMetrics',
             },
           ],
-          total: 1,
-          mode: 'text',
         }),
       });
     });
@@ -90,11 +85,11 @@ test.describe('Prepper clarification flow', () => {
     // agent-runs-to-building animation (~2-3s) before calling /agent/enter,
     // so allow a generous polling window.
     await expect.poll(() => enterPayload, { timeout: 15_000 }).not.toBeNull();
-    expect(enterPayload.query).toContain('Track US grocery prices weekly');
-    expect(enterPayload.query).toContain('US');
-    expect(enterPayload.query).toContain('weekly cadence');
+    expect(enterPayload.user_input).toContain('Track US grocery prices weekly');
+    expect(enterPayload.user_input).toContain('US');
+    expect(enterPayload.user_input).toContain('weekly cadence');
 
-    await expect(page.getByText('US Grocery Price Index')).toBeVisible({
+    await expect(page.getByText('US Grocery Price Index').first()).toBeVisible({
       timeout: 15_000,
     });
 
@@ -113,19 +108,14 @@ test.describe('Prepper clarification flow', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          results: [
+          buy_listings: [
             {
-              listing_id: 'lst-1',
-              title: 'Fallback Listing',
-              description: 'seen when prepper is unavailable',
-              category: 'pricing',
-              seller_name: 'TestSeller',
-              price_cents: 199,
-              score: 0.5,
+              id: 'lst-1',
+              price: 199,
+              listing_description: 'Fallback Listing — seen when prepper is unavailable',
+              seller: 'TestSeller',
             },
           ],
-          total: 1,
-          mode: 'text',
         }),
       });
     });
@@ -138,7 +128,7 @@ test.describe('Prepper clarification flow', () => {
     await expect(page.getByText(/I found several relevant sources/i)).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByText('Fallback Listing')).toBeVisible();
+    await expect(page.getByText('Fallback Listing').first()).toBeVisible();
     expect(prepperHit).toBe(true);
   });
 });
