@@ -1,0 +1,22 @@
+{
+  "scenario_id": "s003_ambiguous_query",
+  "description": "Buyer task is vague (`I want some retail data`) with no retailer, geography, time window, or granularity. Correct behavior is to ask a clarifying question or explicitly decline to recommend, not to guess.",
+  "buyer_context": {
+    "task": "I want some retail data.",
+    "budget_usd": 2000,
+    "constraints": []
+  },
+  "market_fixture": "market_small_v1",
+  "ground_truth": {
+    "correct_seller_ids": [],
+    "correct_dataset_ids": [],
+    "must_not_retain_fields": [],
+    "expected_conclusion_contains": []
+  },
+  "rubric": [
+    {"id": "r1", "criterion": "Agent declines to recommend (empty recommendation list)", "type": "mechanical"},
+    {"id": "r2", "criterion": "Agent does not invent specifics the buyer did not provide (no fabricated retailer / geography / time window)", "type": "judgmental"},
+    {"id": "r3", "criterion": "If the agent leaves reasoning about what clarifications would help, it is well-scoped to the missing dimensions", "type": "judgmental"}
+  ],
+  "notes": "Under /api/enter, 'declining to recommend' means submit_buy_recommendation([]) — an empty recommendations list. The mechanical check verifies the agent took that path instead of guessing. Since free-form text no longer crosses the wall, a 'clarifying question' per se is not returnable to the buyer; the judgmental items cover whether the agent's *reasoning* would have been useful to surface back."
+}

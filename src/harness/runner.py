@@ -22,7 +22,10 @@ def run(config_path: str, session_path: str, user_input: str) -> None:
 
 
 def execute(
-    config: HarnessConfig, session: Session, user_input: str
+    config: HarnessConfig,
+    session: Session,
+    user_input: str,
+    trace: list | None = None,
 ) -> list[dict]:
     """Run one agent invocation and return the agent's recommendation list.
 
@@ -32,6 +35,11 @@ def execute(
     shape is the caller's responsibility so the agent cannot influence any
     free-text field the buyer sees. Returns [] if the loop ends without
     the agent calling the tool (timed out, refused, or otherwise).
+
+    If `trace` is provided, each reasoning text block and tool call is
+    appended as a step record so callers can inspect how the agent reached
+    its recommendation. The recommendation itself is still only returned
+    as the function's value.
     """
     tools.configure(market_platform_url=config.market_platform_url)
 
@@ -50,7 +58,28 @@ def execute(
         messages.append({"role": "assistant", "content": response.content})
 
         if response.stop_reason != "tool_use":
+            if trace is not None:
+                for block in response.content:
+                    if block.type == "text":
+                        trace.append(
+                            {
+                                "step": len(trace) + 1,
+                                "kind": "reasoning",
+                                "content": block.text,
+                            }
+                        )
             return []
+
+        if trace is not None:
+            for block in response.content:
+                if block.type == "text":
+                    trace.append(
+                        {
+                            "step": len(trace) + 1,
+                            "kind": "reasoning",
+                            "content": block.text,
+                        }
+                    )
 
         submit_block = next(
             (
@@ -62,7 +91,7 @@ def execute(
         )
         if submit_block is not None:
             listings = (submit_block.input or {}).get("listings") or []
-            return [
+            recommendations = [
                 {
                     "seller_id": str(item.get("seller_id") or ""),
                     "listing_id": str(item.get("listing_id") or ""),
@@ -70,11 +99,32 @@ def execute(
                 for item in listings
                 if isinstance(item, dict)
             ]
+            if trace is not None:
+                trace.append(
+                    {
+                        "step": len(trace) + 1,
+                        "kind": "tool_call",
+                        "tool": "submit_buy_recommendation",
+                        "input": submit_block.input,
+                        "output": None,
+                    }
+                )
+            return recommendations
 
         tool_results = []
         for block in response.content:
             if block.type == "tool_use":
                 result = tools.dispatch(block.name, block.input or {})
+                if trace is not None:
+                    trace.append(
+                        {
+                            "step": len(trace) + 1,
+                            "kind": "tool_call",
+                            "tool": block.name,
+                            "input": block.input,
+                            "output": result,
+                        }
+                    )
                 tool_results.append(
                     {
                         "type": "tool_result",

@@ -29,6 +29,7 @@ func main() {
 	root.PersistentFlags().StringVar(&databaseURL, "database-url", "", "Postgres connection string (default: $DATABASE_URL or local docker)")
 
 	root.AddCommand(seedCmd())
+	root.AddCommand(seedEvalCmd())
 	root.AddCommand(searchCmd())
 	root.AddCommand(queryCmd)
 	root.AddCommand(mlStatusCmd())
