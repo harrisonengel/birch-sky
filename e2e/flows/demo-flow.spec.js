@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 // The scripted-overlay demo is gone — the frontend now hits a real backend.
-// These tests mock the HTTP surface the demo-flow calls (prepper, market
+// These tests mock the HTTP surface the demo-flow calls (prepper, harness
 // enter, purchases, buy-orders) so they stay deterministic and isolated
 // from whether the docker-compose stack is actually running.
 
@@ -25,24 +25,19 @@ test.describe('Information Exchange demo flow', () => {
   test('happy path: query returns purchasable results', async ({ page }) => {
     await stubPrepperDisabled(page);
 
-    await page.route(/\/api\/v1\/enter$/, async (route) => {
+    await page.route(/\/agent\/enter$/, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          results: [
+          buy_listings: [
             {
-              listing_id: 'lst-abc',
-              title: 'Consumer Electronics Pricing Index Q1 2026',
-              description: 'Aggregated pricing data across 12 major retailers',
-              category: 'pricing',
-              seller_name: 'RetailMetrics Inc.',
-              price_cents: 250,
-              score: 0.85,
+              id: 'lst-abc',
+              price: 250,
+              listing_description: 'Aggregated pricing data across 12 major retailers',
+              seller: 'RetailMetrics Inc.',
             },
           ],
-          total: 1,
-          mode: 'text',
         }),
       });
     });
@@ -91,11 +86,11 @@ test.describe('Information Exchange demo flow', () => {
   test('no-results path: agent offers a buy request form', async ({ page }) => {
     await stubPrepperDisabled(page);
 
-    await page.route(/\/api\/v1\/enter$/, async (route) => {
+    await page.route(/\/agent\/enter$/, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ results: [], total: 0, mode: 'text' }),
+        body: JSON.stringify({ buy_listings: [] }),
       });
     });
 

@@ -45,29 +45,24 @@ test.describe('scene canvas rendering', () => {
   test.beforeEach(async ({ page }) => {
     // The scene runs its animation regardless of backend state, but the
     // "building stays drawn after a query" test below triggers runFlow,
-    // which hits /api/prepper/start and /api/v1/enter. Stub both so the
-    // test doesn't depend on a live stack.
+    // which hits /api/prepper/start and the harness /agent/enter proxy.
+    // Stub both so the test doesn't depend on a live stack.
     await page.route('**/api/prepper/**', async (route) => {
       await route.fulfill({ status: 503, body: '' });
     });
-    await page.route(/\/api\/v1\/enter$/, async (route) => {
+    await page.route(/\/agent\/enter$/, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          results: [
+          buy_listings: [
             {
-              listing_id: 'lst-scene',
-              title: 'Pricing Index',
-              description: 'stub',
-              category: 'pricing',
-              seller_name: 'StubCo',
-              price_cents: 199,
-              score: 0.5,
+              id: 'lst-scene',
+              price: 199,
+              listing_description: 'Pricing Index — stub',
+              seller: 'StubCo',
             },
           ],
-          total: 1,
-          mode: 'text',
         }),
       });
     });

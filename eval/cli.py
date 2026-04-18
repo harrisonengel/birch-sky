@@ -41,9 +41,13 @@ def cmd_run(args) -> int:
     except FileNotFoundError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
-    final = (trace.get("final_output") or "").replace("\n", " ")
+    recs = trace.get("recommendations") or []
+    bls = trace.get("buy_listings") or []
     print(f"-> {path.relative_to(paths.REPO_ROOT)}")
-    print(f"   run_id={trace['run_id']}  Final: {final[:80]!r}")
+    summary = f"{len(recs)} recommendation(s), {len(bls)} hydrated"
+    if trace.get("hydration_error"):
+        summary += f"  [hydration_error: {trace['hydration_error']}]"
+    print(f"   run_id={trace['run_id']}  {summary}")
     if trace.get("exception"):
         print(f"   exception: {trace['exception']['type']}: "
               f"{trace['exception']['message']}", file=sys.stderr)

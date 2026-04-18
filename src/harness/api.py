@@ -1,13 +1,16 @@
-"""FastAPI wrapper around the agent harness runner.
+"""FastAPI wrapper around the agent harness.
 
-Exposes POST /api/run so the frontend (or any HTTP client) can invoke
-a buyer-agent session without shelling out to the CLI.
+The harness is the single entry point for the frontend. The frontend cannot
+reach the market platform directly — it goes through `/api/enter` here, which
+is the buyer "entering" the marketplace via their agent. The harness then
+runs the full multi-turn tool-using agent loop and returns a structured buy
+recommendation. There is no simple pass-through search; the agent drives
+every request.
 
 Config comes from environment variables, not YAML files:
-  - MODEL_NAME          (default: claude-sonnet-4-5)
-  - ANTHROPIC_API_KEY   (required)
-  - OPENSEARCH_URL      (default: http://opensearch:9200)
-  - OPENSEARCH_INDEX    (default: listings)
+  - MODEL_NAME           (default: claude-sonnet-4-5)
+  - ANTHROPIC_API_KEY    (required)
+  - MARKET_PLATFORM_URL  (default: http://market-platform:8080)
 """
 
 from __future__ import annotations
@@ -21,6 +24,7 @@ from pydantic import BaseModel, Field
 from .config import HarnessConfig
 from .runner import execute
 from .session import from_context
+from .tools import HydrationError, hydrate_buy_listings
 
 app = FastAPI(title="IE Agent Harness", version="0.1.0")
 
@@ -39,12 +43,13 @@ def _load_config() -> HarnessConfig:
     return HarnessConfig(
         model=os.environ.get("MODEL_NAME", "claude-sonnet-4-5"),
         api_key=api_key,
-        opensearch_url=os.environ.get("OPENSEARCH_URL", "http://opensearch:9200"),
-        opensearch_index=os.environ.get("OPENSEARCH_INDEX", "listings"),
+        market_platform_url=os.environ.get(
+            "MARKET_PLATFORM_URL", "http://market-platform:8080"
+        ).rstrip("/"),
     )
 
 
-class RunRequest(BaseModel):
+class EnterRequest(BaseModel):
     starting_context: dict = Field(
         ..., description="Agent context with background, goal, constraints"
     )
@@ -52,20 +57,33 @@ class RunRequest(BaseModel):
     max_turns: int = Field(default=20, ge=1, le=50)
 
 
-class RunResponse(BaseModel):
-    response: str
+class BuyListing(BaseModel):
+    id: str
+    price: int
+    listing_description: str
+    seller: str
 
 
-@app.post("/api/run", response_model=RunResponse)
-def run_agent(req: RunRequest) -> RunResponse:
+class EnterResponse(BaseModel):
+    buy_listings: list[BuyListing]
+
+
+@app.post("/api/enter", response_model=EnterResponse)
+def enter(req: EnterRequest) -> EnterResponse:
     try:
         config = _load_config()
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
     session = from_context(req.starting_context, max_turns=req.max_turns)
-    result = execute(config, session, req.user_input)
-    return RunResponse(response=result)
+    recommendations = execute(config, session, req.user_input)
+
+    try:
+        buy_listings = hydrate_buy_listings(recommendations)
+    except HydrationError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    return EnterResponse(buy_listings=[BuyListing(**item) for item in buy_listings])
 
 
 @app.get("/health")

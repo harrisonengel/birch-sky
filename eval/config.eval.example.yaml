@@ -1,13 +1,20 @@
 # Copy to eval/config.eval.yaml and fill in values.
 # ie_eval reuses harness.config.load on this file — same shape as
-# config.example.yaml, pointed at the dedicated eval environment.
+# config.example.yaml, pointed at whichever market-platform instance
+# serves the eval data.
 
 model:
   name: claude-sonnet-4-6
   api_key_env: ANTHROPIC_API_KEY
 
-opensearch:
-  url: http://localhost:9200
-  index: listings_eval
-  # user: admin
-  # pass: admin
+market_platform:
+  # The harness calls the market platform's /api/v1/search for retrieval
+  # and /api/v1/listings/<id> + /api/v1/sellers/<id> to hydrate the agent's
+  # submit_buy_recommendation output into the user-facing buy_listings.
+  #
+  # Defaults in `iecli seed-eval` now write to the primary env (iemarket /
+  # listings) so this URL points at the only market-platform container in
+  # a vanilla docker-compose stack. For a truly isolated eval env, run a
+  # second market-platform pointed at iemarket_eval / listings_eval and
+  # point this URL at it.
+  url: http://localhost:8080

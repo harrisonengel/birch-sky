@@ -18,7 +18,7 @@ import (
 	"github.com/harrisonengel/birch-sky/src/market-platform/tests/helpers"
 )
 
-type enterReq struct {
+type searchReq struct {
 	Query         string `json:"query"`
 	Category      string `json:"category,omitempty"`
 	MaxPriceCents *int   `json:"max_price_cents,omitempty"`
@@ -26,13 +26,13 @@ type enterReq struct {
 	PerPage       int    `json:"per_page,omitempty"`
 }
 
-type enterResp struct {
-	Results []enterHit `json:"results"`
-	Total   int        `json:"total"`
-	Mode    string     `json:"mode"`
+type searchResp struct {
+	Results []searchHit `json:"results"`
+	Total   int         `json:"total"`
+	Mode    string      `json:"mode"`
 }
 
-type enterHit struct {
+type searchHit struct {
 	ListingID   string  `json:"listing_id"`
 	Score       float64 `json:"score"`
 	Title       string  `json:"title"`
@@ -41,14 +41,14 @@ type enterHit struct {
 	PriceCents  int     `json:"price_cents"`
 }
 
-func doEnterHTTP(t *testing.T, baseURL string, req enterReq) (*http.Response, enterResp) {
+func doSearchHTTP(t *testing.T, baseURL string, req searchReq) (*http.Response, searchResp) {
 	t.Helper()
 	body, _ := json.Marshal(req)
-	resp, err := http.Post(baseURL+"/api/v1/enter", "application/json", bytes.NewReader(body))
+	resp, err := http.Post(baseURL+"/api/v1/search", "application/json", bytes.NewReader(body))
 	if err != nil {
-		t.Fatalf("POST /enter: %v", err)
+		t.Fatalf("POST /search: %v", err)
 	}
-	var sr enterResp
+	var sr searchResp
 	if resp.StatusCode == http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
@@ -58,7 +58,7 @@ func doEnterHTTP(t *testing.T, baseURL string, req enterReq) (*http.Response, en
 	return resp, sr
 }
 
-func containsID(results []enterHit, id string) bool {
+func containsID(results []searchHit, id string) bool {
 	for _, r := range results {
 		if r.ListingID == id {
 			return true
@@ -100,16 +100,16 @@ func createSellerDirect(t *testing.T, name, email string) string {
 	return seller.ID
 }
 
-func TestEnter_EmptyIndex(t *testing.T) {
+func TestSearch_EmptyIndex(t *testing.T) {
 	ts := newTestServer(t)
-	resp, sr := doEnterHTTP(t, ts.URL, enterReq{Query: "nonexistent query xyzzy42"})
+	resp, sr := doSearchHTTP(t, ts.URL, searchReq{Query: "nonexistent query xyzzy42"})
 	helpers.AssertStatus(t, resp, http.StatusOK)
 	if sr.Total != 0 {
 		t.Fatalf("expected 0 results, got %d", sr.Total)
 	}
 }
 
-func TestEnter_ExactTitleMatch(t *testing.T) {
+func TestSearch_ExactTitleMatch(t *testing.T) {
 	ts := newTestServer(t)
 	sellerID := createSellerDirect(t, "ExactTitle Seller", "exact-title@test.com")
 
@@ -117,7 +117,7 @@ func TestEnter_ExactTitleMatch(t *testing.T) {
 	createListingDirect(t, sellerID, "Classical Mechanics Simulations", "Newtonian physics simulations", "science", 3000)
 	createListingDirect(t, sellerID, "Organic Chemistry Reactions", "Reaction yield data", "science", 4000)
 
-	resp, sr := doEnterHTTP(t, ts.URL, enterReq{Query: "Quantum Entanglement Dataset"})
+	resp, sr := doSearchHTTP(t, ts.URL, searchReq{Query: "Quantum Entanglement Dataset"})
 	helpers.AssertStatus(t, resp, http.StatusOK)
 	if sr.Total == 0 {
 		t.Fatal("expected at least 1 result")
@@ -127,14 +127,14 @@ func TestEnter_ExactTitleMatch(t *testing.T) {
 	}
 }
 
-func TestEnter_CategoryFilter(t *testing.T) {
+func TestSearch_CategoryFilter(t *testing.T) {
 	ts := newTestServer(t)
 	sellerID := createSellerDirect(t, "Category Seller", "category-filter@test.com")
 
 	createListingDirect(t, sellerID, "Financial Market Trends 2025", "Stock market analysis", "finance", 8000)
 	healthID := createListingDirect(t, sellerID, "Health Market Trends 2025", "Healthcare market data", "health", 9000)
 
-	resp, sr := doEnterHTTP(t, ts.URL, enterReq{Query: "Market Trends", Category: "health"})
+	resp, sr := doSearchHTTP(t, ts.URL, searchReq{Query: "Market Trends", Category: "health"})
 	helpers.AssertStatus(t, resp, http.StatusOK)
 	if sr.Total == 0 {
 		t.Fatal("expected results in health category")
@@ -149,7 +149,7 @@ func TestEnter_CategoryFilter(t *testing.T) {
 	}
 }
 
-func TestEnter_MaxPriceFilter(t *testing.T) {
+func TestSearch_MaxPriceFilter(t *testing.T) {
 	ts := newTestServer(t)
 	sellerID := createSellerDirect(t, "Price Seller", "price-filter@test.com")
 
@@ -157,7 +157,7 @@ func TestEnter_MaxPriceFilter(t *testing.T) {
 	createListingDirect(t, sellerID, "Premium Geospatial Data", "High-res satellite imagery", "geo", 50000)
 
 	maxPrice := 5000
-	resp, sr := doEnterHTTP(t, ts.URL, enterReq{Query: "Geospatial Data", MaxPriceCents: &maxPrice})
+	resp, sr := doSearchHTTP(t, ts.URL, searchReq{Query: "Geospatial Data", MaxPriceCents: &maxPrice})
 	helpers.AssertStatus(t, resp, http.StatusOK)
 	for _, r := range sr.Results {
 		if r.PriceCents > maxPrice {
@@ -169,12 +169,12 @@ func TestEnter_MaxPriceFilter(t *testing.T) {
 	}
 }
 
-func TestEnter_ModeText(t *testing.T) {
+func TestSearch_ModeText(t *testing.T) {
 	ts := newTestServer(t)
 	sellerID := createSellerDirect(t, "TextMode Seller", "textmode@test.com")
 	createListingDirect(t, sellerID, "Cryptocurrency Exchange Volumes", "Daily trading volumes", "crypto", 7000)
 
-	resp, sr := doEnterHTTP(t, ts.URL, enterReq{Query: "Cryptocurrency Exchange Volumes", Mode: "text"})
+	resp, sr := doSearchHTTP(t, ts.URL, searchReq{Query: "Cryptocurrency Exchange Volumes", Mode: "text"})
 	helpers.AssertStatus(t, resp, http.StatusOK)
 	if sr.Mode != "text" {
 		t.Fatalf("expected mode=text, got %s", sr.Mode)
@@ -184,12 +184,12 @@ func TestEnter_ModeText(t *testing.T) {
 	}
 }
 
-func TestEnter_ModeVector(t *testing.T) {
+func TestSearch_ModeVector(t *testing.T) {
 	ts := newTestServer(t)
 	sellerID := createSellerDirect(t, "VectorMode Seller", "vectormode@test.com")
 	createListingDirect(t, sellerID, "Neural Network Benchmarks", "Performance benchmarks for transformers", "ai", 6000)
 
-	resp, sr := doEnterHTTP(t, ts.URL, enterReq{Query: "Neural Network Benchmarks", Mode: "vector"})
+	resp, sr := doSearchHTTP(t, ts.URL, searchReq{Query: "Neural Network Benchmarks", Mode: "vector"})
 	helpers.AssertStatus(t, resp, http.StatusOK)
 	if sr.Mode != "vector" {
 		t.Fatalf("expected mode=vector, got %s", sr.Mode)
@@ -199,12 +199,12 @@ func TestEnter_ModeVector(t *testing.T) {
 	}
 }
 
-func TestEnter_ModeHybrid(t *testing.T) {
+func TestSearch_ModeHybrid(t *testing.T) {
 	ts := newTestServer(t)
 	sellerID := createSellerDirect(t, "HybridMode Seller", "hybridmode@test.com")
 	createListingDirect(t, sellerID, "Climate Sensor Readings", "Temperature and humidity data", "climate", 4500)
 
-	resp, sr := doEnterHTTP(t, ts.URL, enterReq{Query: "Climate Sensor Readings", Mode: "hybrid"})
+	resp, sr := doSearchHTTP(t, ts.URL, searchReq{Query: "Climate Sensor Readings", Mode: "hybrid"})
 	helpers.AssertStatus(t, resp, http.StatusOK)
 	if sr.Mode != "hybrid" {
 		t.Fatalf("expected mode=hybrid, got %s", sr.Mode)
@@ -214,22 +214,22 @@ func TestEnter_ModeHybrid(t *testing.T) {
 	}
 }
 
-func TestEnter_EmptyQuery(t *testing.T) {
+func TestSearch_EmptyQuery(t *testing.T) {
 	ts := newTestServer(t)
-	resp, err := http.Post(ts.URL+"/api/v1/enter", "application/json", strings.NewReader(`{"query": ""}`))
+	resp, err := http.Post(ts.URL+"/api/v1/search", "application/json", strings.NewReader(`{"query": ""}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	helpers.AssertStatus(t, resp, http.StatusBadRequest)
 }
 
-func TestEnter_DeletedListingsExcluded(t *testing.T) {
+func TestSearch_DeletedListingsExcluded(t *testing.T) {
 	ts := newTestServer(t)
-	sellerID := createSellerDirect(t, "DeleteEnter Seller", "deleteenter@test.com")
+	sellerID := createSellerDirect(t, "DeleteSearch Seller", "deletesearch@test.com")
 	deletedID := createListingDirect(t, sellerID, "Obsolete Tidal Pattern Analysis", "Old tidal data", "ocean", 2000)
 
 	// Verify it shows up
-	_, srBefore := doEnterHTTP(t, ts.URL, enterReq{Query: "Obsolete Tidal Pattern Analysis"})
+	_, srBefore := doSearchHTTP(t, ts.URL, searchReq{Query: "Obsolete Tidal Pattern Analysis"})
 	if !containsID(srBefore.Results, deletedID) {
 		t.Fatal("expected listing before deletion")
 	}
@@ -239,15 +239,15 @@ func TestEnter_DeletedListingsExcluded(t *testing.T) {
 	resp.Body.Close()
 
 	// Should no longer appear
-	_, srAfter := doEnterHTTP(t, ts.URL, enterReq{Query: "Obsolete Tidal Pattern Analysis"})
+	_, srAfter := doSearchHTTP(t, ts.URL, searchReq{Query: "Obsolete Tidal Pattern Analysis"})
 	if containsID(srAfter.Results, deletedID) {
 		t.Fatal("deleted listing should not appear")
 	}
 }
 
-func TestEnter_CSVContentSearchable(t *testing.T) {
+func TestSearch_CSVContentSearchable(t *testing.T) {
 	ts := newTestServer(t)
-	sellerID := createSellerDirect(t, "CSVEnter Seller", "csventer@test.com")
+	sellerID := createSellerDirect(t, "CSVSearch Seller", "csvsearch@test.com")
 	listingID := createListingViaAPI(t, ts.URL, sellerID, "Demographic Survey Results", "Survey data from 2025", "demographics", 12000)
 
 	csv := "respondent_id,annual_income_usd,zipcode,household_size\n1,55000,90210,3\n2,72000,10001,2\n"
@@ -268,8 +268,8 @@ func TestEnter_CSVContentSearchable(t *testing.T) {
 	helpers.AssertStatus(t, resp, http.StatusOK)
 	resp.Body.Close()
 
-	// Enter the exchange and look for column name
-	_, sr := doEnterHTTP(t, ts.URL, enterReq{Query: "annual_income_usd"})
+	// Search and look for column name
+	_, sr := doSearchHTTP(t, ts.URL, searchReq{Query: "annual_income_usd"})
 	if !containsID(sr.Results, listingID) {
 		t.Fatalf("expected listing %s found via CSV column name", listingID)
 	}

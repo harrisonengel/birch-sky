@@ -11,12 +11,12 @@
     "correct_seller_ids": [],
     "correct_dataset_ids": [],
     "must_not_retain_fields": [],
-    "expected_conclusion_contains": ["clarif"]
+    "expected_conclusion_contains": []
   },
   "rubric": [
-    {"id": "r1", "criterion": "Final output asks for clarification or declines to recommend (contains 'clarif')", "type": "mechanical"},
+    {"id": "r1", "criterion": "Agent declines to recommend (empty recommendation list)", "type": "mechanical"},
     {"id": "r2", "criterion": "Agent does not invent specifics the buyer did not provide (no fabricated retailer / geography / time window)", "type": "judgmental"},
-    {"id": "r3", "criterion": "Clarifying questions are well-scoped and cover the missing dimensions", "type": "judgmental"}
+    {"id": "r3", "criterion": "If the agent leaves reasoning about what clarifications would help, it is well-scoped to the missing dimensions", "type": "judgmental"}
   ],
-  "notes": "Since there is no correct dataset, correct_dataset_ids is empty and the mechanical seller/dataset check is skipped. The single mechanical check is that the agent's final output contains 'clarif' (matches clarify/clarification). This is coarse — an agent that gracefully declines without using that word would fail the mechanical check and should be caught by the judge pass."
+  "notes": "Under /api/enter, 'declining to recommend' means submit_buy_recommendation([]) — an empty recommendations list. The mechanical check verifies the agent took that path instead of guessing. Since free-form text no longer crosses the wall, a 'clarifying question' per se is not returnable to the buyer; the judgmental items cover whether the agent's *reasoning* would have been useful to surface back."
 }

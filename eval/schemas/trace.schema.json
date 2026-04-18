@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Trace",
   "type": "object",
-  "required": ["run_id", "scenario_id", "timestamp", "harness_config", "resolved_inputs", "agent_steps", "final_output"],
+  "required": ["run_id", "scenario_id", "timestamp", "harness_config", "resolved_inputs", "agent_steps", "recommendations", "buy_listings"],
   "properties": {
     "run_id": {"type": "string"},
     "scenario_id": {"type": "string"},
@@ -14,8 +14,7 @@
       "properties": {
         "model": {"type": "string"},
         "system_prompt_hash": {"type": "string"},
-        "opensearch_url": {"type": "string"},
-        "opensearch_index": {"type": "string"},
+        "market_platform_url": {"type": "string"},
         "seed_fixture_hash": {"type": "string"},
         "note": {"type": "string"}
       }
@@ -36,7 +35,33 @@
         }
       }
     },
-    "final_output": {"type": "string"},
+    "recommendations": {
+      "type": "array",
+      "description": "Raw {seller_id, listing_id} pairs submitted by the agent via submit_buy_recommendation. Structured only; no free text.",
+      "items": {
+        "type": "object",
+        "required": ["seller_id", "listing_id"],
+        "properties": {
+          "seller_id": {"type": "string"},
+          "listing_id": {"type": "string"}
+        }
+      }
+    },
+    "buy_listings": {
+      "type": "array",
+      "description": "Server-hydrated view exactly as /api/enter returns it to the buyer. listing_description and seller are authoritative from the market platform, not the agent.",
+      "items": {
+        "type": "object",
+        "required": ["id", "price", "listing_description", "seller"],
+        "properties": {
+          "id": {"type": "string"},
+          "price": {"type": "integer"},
+          "listing_description": {"type": "string"},
+          "seller": {"type": "string"}
+        }
+      }
+    },
+    "hydration_error": {"type": ["string", "null"]},
     "exception": {
       "type": ["object", "null"],
       "properties": {

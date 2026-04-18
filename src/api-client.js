@@ -1,5 +1,9 @@
-// Thin API client for the market-platform backend.
-// In dev, Vite proxies /api/v1 -> localhost:8080 and /agent -> localhost:8000.
+// Thin API client. The frontend's only path into the agent layer is the
+// harness `/enter` endpoint — direct calls to the market platform's search
+// API are not allowed. Other market-platform endpoints (listings, purchases,
+// buy-orders) are still called directly for now since they are transactional,
+// not agent-mediated. In dev, Vite proxies /api/v1 -> market-platform :8080
+// and /agent -> harness :8000.
 
 const API_BASE = '/api/v1';
 const AGENT_BASE = '/agent';
@@ -27,15 +31,23 @@ async function get(url) {
 }
 
 /**
- * Enter the marketplace to find data listings.
- * @param {string} query - Natural language query
- * @returns {Promise<{results: Array, total: number, mode: string}>}
+ * Enter the marketplace via the agent harness. The harness runs the full
+ * multi-turn buyer agent loop and returns a hydrated list of recommended
+ * listings — it is the only path the frontend has into catalog data.
+ * @param {string} userInput - The buyer's query / instruction
+ * @param {object} [context] - {background, goal, constraints} for the agent
+ * @param {number} [maxTurns=20] - Cap on agent turns
+ * @returns {Promise<{buy_listings: Array<{id: string, price: number, listing_description: string, seller: string}>}>}
  */
-export async function enterMarketplace(query) {
-  return post(`${API_BASE}/enter`, {
-    query,
-    mode: 'text',
-    per_page: 10,
+export async function enterMarketplace(userInput, context, maxTurns = 20) {
+  return post(`${AGENT_BASE}/enter`, {
+    starting_context: context || {
+      background: 'You are helping a buyer find data on the Information Exchange.',
+      goal: 'Find relevant data listings for the buyer to purchase.',
+      constraints: '',
+    },
+    user_input: userInput,
+    max_turns: maxTurns,
   });
 }
 
@@ -109,24 +121,6 @@ export async function respondPrepper(sessionID, answer) {
   return post(`/api/prepper/respond`, {
     session_id: sessionID,
     answer: answer,
-  });
-}
-
-/**
- * Run the buyer agent via the harness service.
- * @param {string} userInput
- * @param {object} context - {background, goal, constraints}
- * @returns {Promise<{response: string}>}
- */
-export async function runAgent(userInput, context) {
-  return post(`${AGENT_BASE}/run`, {
-    starting_context: context || {
-      background: 'You are helping a buyer find data on the Information Exchange.',
-      goal: 'Find relevant data listings.',
-      constraints: '',
-    },
-    user_input: userInput,
-    max_turns: 10,
   });
 }
 

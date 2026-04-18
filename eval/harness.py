@@ -4,6 +4,9 @@ Responsible for the full `ie_eval run` lifecycle, minus the CLI wrapping:
 - Load scenario + fixture
 - Build a Session from buyer_context
 - Call the existing harness.runner.execute with a trace list
+- Hydrate the agent's structured recommendations into buy_listings — this
+  is the sanitized view the buyer sees outside the wall. Free-form LLM text
+  does not cross the wall; only ids do.
 - Write trace file to eval/runs/
 - Write the resolved system prompt to eval/runs/prompts/{hash}.txt once
 """
@@ -28,6 +31,7 @@ if str(_SRC) not in sys.path:
 from harness.config import HarnessConfig  # noqa: E402
 from harness.runner import execute as agent_execute  # noqa: E402
 from harness.session import from_context  # noqa: E402
+from harness import tools as agent_tools  # noqa: E402
 
 from . import paths, validate
 
@@ -132,16 +136,31 @@ def run_scenario(
     trace_steps: list[dict] = []
     user_input = scenario["buyer_context"]["task"]
 
-    final_output = ""
+    recommendations: list[dict] = []
+    buy_listings: list[dict] = []
+    hydration_error: str | None = None
     exc_payload: dict | None = None
     try:
-        final_output = agent_execute(config, session, user_input, trace=trace_steps)
+        recommendations = agent_execute(config, session, user_input, trace=trace_steps)
     except Exception as e:  # noqa: BLE001 — spec says failures are data
         exc_payload = {
             "type": type(e).__name__,
             "message": str(e),
             "traceback": traceback.format_exc(),
         }
+
+    # Hydrate whatever recommendations the agent submitted into the user-facing
+    # buy_listings shape. This is exactly what /api/enter returns to the buyer.
+    # Hydration failure is tracked separately from an agent-loop exception so
+    # we can tell the two apart (wall upheld / wall rejected a bogus id).
+    if recommendations and exc_payload is None:
+        agent_tools.configure(market_platform_url=config.market_platform_url)
+        try:
+            buy_listings = agent_tools.hydrate_buy_listings(recommendations)
+        except agent_tools.HydrationError as he:
+            hydration_error = str(he)
+        except Exception as he:  # noqa: BLE001 — network / server 5xx etc.
+            hydration_error = f"{type(he).__name__}: {he}"
 
     trace = {
         "run_id": run_id,
@@ -151,8 +170,7 @@ def run_scenario(
         "harness_config": {
             "model": config.model,
             "system_prompt_hash": prompt_hash,
-            "opensearch_url": config.opensearch_url,
-            "opensearch_index": config.opensearch_index,
+            "market_platform_url": config.market_platform_url,
             "seed_fixture_hash": fixture_hash,
             "note": note,
         },
@@ -161,7 +179,9 @@ def run_scenario(
             "market_fixture": scenario["market_fixture"],
         },
         "agent_steps": trace_steps,
-        "final_output": final_output,
+        "recommendations": recommendations,
+        "buy_listings": buy_listings,
+        "hydration_error": hydration_error,
         "exception": exc_payload,
     }
     if fixture:

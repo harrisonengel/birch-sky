@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test';
 
 // These tests cover the agent-prepper integration in src/demo-flow.js. The
 // real agent-prepper service is not running during e2e, so we mock its HTTP
-// surface with page.route. The marketplace /api/v1/enter endpoint is also
-// mocked so the test stays isolated from market-platform availability.
+// surface with page.route. The harness /agent/enter endpoint is also mocked
+// so the test stays isolated from harness/market-platform availability.
 
 test.describe('Prepper clarification flow', () => {
   test('multi-turn clarification then results, with briefing folded into the search query', async ({ page }) => {
@@ -43,25 +43,21 @@ test.describe('Prepper clarification flow', () => {
       });
     });
 
-    await page.route(/\/api\/v1\/enter$/, async (route) => {
+    // Stub the harness enter so we can assert the briefing was folded in.
+    await page.route(/\/agent\/enter$/, async (route) => {
       enterPayload = JSON.parse(route.request().postData() || '{}');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          results: [
+          buy_listings: [
             {
-              listing_id: 'lst-1',
-              title: 'US Grocery Price Index',
-              description: 'Weekly national grocery pricing',
-              category: 'pricing',
-              seller_name: 'RetailMetrics',
-              price_cents: 250,
-              score: 0.8,
+              id: 'lst-1',
+              price: 250,
+              listing_description: 'US Grocery Price Index — Weekly national grocery pricing',
+              seller: 'RetailMetrics',
             },
           ],
-          total: 1,
-          mode: 'text',
         }),
       });
     });
@@ -83,17 +79,17 @@ test.describe('Prepper clarification flow', () => {
       page.getByText(/Got it\. Searching the Exchange for: Track US grocery prices weekly/)
     ).toBeVisible({ timeout: 10_000 });
 
-    // The marketplace search should have been called with a query that
-    // includes the briefing's goal_summary + selection_criteria — that's
-    // the only way the buyer's clarified intent crosses into the search.
-    // runFlow plays the agent-runs-to-building animation (~2-3s) before
-    // calling /api/v1/enter, so allow a generous polling window.
+    // The harness enter should have been called with a query that includes
+    // the briefing's goal_summary + selection_criteria — that's the only way
+    // the buyer's clarified intent crosses into the search. runFlow plays the
+    // agent-runs-to-building animation (~2-3s) before calling /agent/enter,
+    // so allow a generous polling window.
     await expect.poll(() => enterPayload, { timeout: 15_000 }).not.toBeNull();
-    expect(enterPayload.query).toContain('Track US grocery prices weekly');
-    expect(enterPayload.query).toContain('US');
-    expect(enterPayload.query).toContain('weekly cadence');
+    expect(enterPayload.user_input).toContain('Track US grocery prices weekly');
+    expect(enterPayload.user_input).toContain('US');
+    expect(enterPayload.user_input).toContain('weekly cadence');
 
-    await expect(page.getByText('US Grocery Price Index')).toBeVisible({
+    await expect(page.getByText('US Grocery Price Index').first()).toBeVisible({
       timeout: 15_000,
     });
 
@@ -107,24 +103,19 @@ test.describe('Prepper clarification flow', () => {
       await route.fulfill({ status: 503, body: '' });
     });
 
-    await page.route(/\/api\/v1\/enter$/, async (route) => {
+    await page.route(/\/agent\/enter$/, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          results: [
+          buy_listings: [
             {
-              listing_id: 'lst-1',
-              title: 'Fallback Listing',
-              description: 'seen when prepper is unavailable',
-              category: 'pricing',
-              seller_name: 'TestSeller',
-              price_cents: 199,
-              score: 0.5,
+              id: 'lst-1',
+              price: 199,
+              listing_description: 'Fallback Listing — seen when prepper is unavailable',
+              seller: 'TestSeller',
             },
           ],
-          total: 1,
-          mode: 'text',
         }),
       });
     });
@@ -137,7 +128,7 @@ test.describe('Prepper clarification flow', () => {
     await expect(page.getByText(/I found several relevant sources/i)).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByText('Fallback Listing')).toBeVisible();
+    await expect(page.getByText('Fallback Listing').first()).toBeVisible();
     expect(prepperHit).toBe(true);
   });
 });

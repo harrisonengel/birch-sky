@@ -57,14 +57,26 @@ def judge(run_spec: str) -> Path:
     mech = mechanical.evaluate(scenario, trace)
     template = _default_verdict(scenario, trace, mech)
 
-    # Also annotate each rubric_result's `criterion` comment-style at the
-    # top of the file so the human has context without bouncing files.
+    # Also annotate the buyer-facing answer at the top of the file so the
+    # human has context without bouncing files. This is exactly what /api/enter
+    # returned to the buyer — no free-form agent text crosses the wall.
     preamble = [
         f"// Verdict for run {trace['run_id']} of scenario {trace['scenario_id']}.",
-        f"// Final output (first 500 chars):",
+        f"// Buyer-facing answer (buy_listings):",
     ]
-    for line in (trace.get("final_output") or "")[:500].splitlines():
-        preamble.append(f"//   {line}")
+    bls = trace.get("buy_listings") or []
+    if not bls:
+        preamble.append("//   (empty — agent declined or failed to submit)")
+    for bl in bls:
+        preamble.append(
+            f"//   - {bl.get('seller', '?')} / id={bl.get('id', '?')} / "
+            f"${(bl.get('price', 0) or 0) / 100:.2f}"
+        )
+        desc = (bl.get("listing_description") or "")[:200]
+        if desc:
+            preamble.append(f"//     {desc}")
+    if trace.get("hydration_error"):
+        preamble.append(f"// hydration_error: {trace['hydration_error']}")
     preamble.append("//")
     preamble.append("// Mechanical items are pre-filled from ground_truth.")
     preamble.append("// Set `pass` on judgmental items (true/false) and set `overall`")

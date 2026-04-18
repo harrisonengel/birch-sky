@@ -1,17 +1,23 @@
 package main
 
-// `iecli seed-eval` populates a dedicated evaluation environment
-// (separate Postgres database, separate OpenSearch index) from JSON
-// fixture files under eval/fixtures/. It's intentionally independent
-// of `iecli seed`: the eval env is expected to grow in isolation from
-// the hand-curated demo data used by the dev stack.
+// `iecli seed-eval` populates Postgres + OpenSearch from JSON fixture
+// files under eval/fixtures/. Defaults target the primary env
+// (iemarket / listings) so the eval harness works against a vanilla
+// docker-compose stack: the harness calls /api/enter on the single
+// market-platform instance, and the market-platform's index is
+// currently hardcoded to `listings`.
+//
+// For a truly isolated eval env, pass --eval-db iemarket_eval and
+// --eval-index listings_eval — then run a second market-platform
+// container pointed at that DB + index. (Until the market-platform's
+// index name becomes configurable, that's the only way to keep eval
+// data strictly separate from dev data.)
 //
 // This command talks directly to Postgres and OpenSearch — it does NOT
 // go through the market-platform HTTP API. That decouples eval seeding
 // from whichever version of the API the dev stack happens to be
-// running, and lets us choose index shape / id scheme per eval needs
-// (for example, using fixture external_ids as OpenSearch document ids
-// so eval ground_truth is stable across re-seeds).
+// running, and lets us use fixture external_ids as OpenSearch document
+// ids so eval ground_truth is stable across re-seeds.
 
 import (
 	"context"
@@ -31,8 +37,12 @@ import (
 )
 
 const (
-	defaultEvalDBName    = "iemarket_eval"
-	defaultEvalIndexName = "listings_eval"
+	// Default to the primary env so seed-eval works against a vanilla
+	// docker-compose stack. The market-platform's OpenSearch index name
+	// is hardcoded to `listings`, so pointing at `listings_eval` would
+	// require a second market-platform instance.
+	defaultEvalDBName    = "iemarket"
+	defaultEvalIndexName = "listings"
 )
 
 type evalSeller struct {
@@ -69,9 +79,12 @@ func seedEvalCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "seed-eval",
-		Short: "Populate the eval-dedicated Postgres DB and OpenSearch index from eval/fixtures/",
-		Long: `Seeds the evaluation environment (Postgres iemarket_eval and OpenSearch listings_eval by default)
-from JSON fixture files. Pass --fixture NAME or --all. Use --reset to drop data before reseeding.`,
+		Short: "Populate Postgres + OpenSearch from eval/fixtures/",
+		Long: `Seeds Postgres + OpenSearch from eval/fixtures/*.json. Defaults write to the primary
+env (iemarket / listings) so the eval harness works with a single docker-compose stack.
+Pass --fixture NAME or --all. Use --reset to drop fixture data before reseeding.
+For an isolated eval env, pass --eval-db iemarket_eval --eval-index listings_eval and
+run a second market-platform pointed at them.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSeedEval(seedEvalOptions{
 				fixtureName: fixtureName,

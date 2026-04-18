@@ -1,8 +1,9 @@
 """Diff two runs of the same scenario.
 
 Default to the last two runs for the scenario. Produce a config delta
-header, then unified diffs of final_output and serialized agent_steps.
-Use `delta` if present, else shell out to `diff -u`.
+header, then unified diffs of the buyer-facing output (recommendations +
+buy_listings) and serialized agent_steps. Use `delta` if present, else
+shell out to `diff -u`.
 """
 
 from __future__ import annotations
@@ -80,10 +81,21 @@ def diff(scenario_id: str, run_a: str | None, run_b: str | None) -> str:
     lines.extend(cd if cd else ["  (no changes)"])
 
     lines.append("")
-    lines.append("=== Final output diff ===")
+    lines.append("=== Recommendations diff ===")
+    a_recs = json.dumps(a.get("recommendations") or [], indent=2, sort_keys=True)
+    b_recs = json.dumps(b.get("recommendations") or [], indent=2, sort_keys=True)
     lines.append(_unified_diff(
-        a.get("final_output") or "", b.get("final_output") or "",
-        f"A/{a_path.stem}/final_output", f"B/{b_path.stem}/final_output",
+        a_recs, b_recs,
+        f"A/{a_path.stem}/recommendations", f"B/{b_path.stem}/recommendations",
+    ).rstrip() or "(identical)")
+
+    lines.append("")
+    lines.append("=== Buyer-facing diff (buy_listings) ===")
+    a_bl = json.dumps(a.get("buy_listings") or [], indent=2, sort_keys=True)
+    b_bl = json.dumps(b.get("buy_listings") or [], indent=2, sort_keys=True)
+    lines.append(_unified_diff(
+        a_bl, b_bl,
+        f"A/{a_path.stem}/buy_listings", f"B/{b_path.stem}/buy_listings",
     ).rstrip() or "(identical)")
 
     a_steps = json.dumps(a.get("agent_steps") or [], indent=2)
