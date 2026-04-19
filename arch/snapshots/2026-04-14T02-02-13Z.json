@@ -1,17 +1,14 @@
 {
   "version": "0.1.0",
-  "updated_at": "2026-04-14T02:02:31Z",
+  "updated_at": "2026-04-07T00:00:00Z",
   "updated_by": "agent",
   "nodes": [
     {
       "id": "web_frontend",
       "type": "client",
       "label": "Web Frontend (Demo)",
-      "description": "Vite + vanilla JS demo UI. Pixel-art buyer agent + chat panel. Currently uses mock data only \u2014 no real backend calls.",
-      "tags": [
-        "demo",
-        "frontend"
-      ],
+      "description": "Vite + vanilla JS demo UI. Pixel-art buyer agent + chat panel. Currently uses mock data only — no real backend calls.",
+      "tags": ["demo", "frontend"],
       "meta": {
         "language": "javascript",
         "repo_path": "src/",
@@ -23,10 +20,7 @@
       "type": "datastore",
       "label": "Mock Data Module",
       "description": "In-memory mock results and buy-request generator. Stand-in for real backend during demo.",
-      "tags": [
-        "demo",
-        "temporary"
-      ],
+      "tags": ["demo", "temporary"],
       "meta": {
         "language": "javascript",
         "repo_path": "src/mock-data.js",
@@ -38,10 +32,7 @@
       "type": "service",
       "label": "Buyers Agent Platform",
       "description": "Planned Go service that hosts forgetful buyer agents in a sandbox. Not yet implemented.",
-      "tags": [
-        "planned",
-        "backend"
-      ],
+      "tags": ["planned", "backend"],
       "meta": {
         "language": "go",
         "confidence": "low"
@@ -52,10 +43,7 @@
       "type": "service",
       "label": "Market Platform",
       "description": "Planned Go service: listings, search, purchases, buy orders. Spec at docs/specs/market-platform/. Not yet implemented.",
-      "tags": [
-        "planned",
-        "backend"
-      ],
+      "tags": ["planned", "backend"],
       "meta": {
         "language": "go",
         "repo_path": "src/market-platform/",
@@ -67,9 +55,7 @@
       "type": "datastore",
       "label": "PostgreSQL",
       "description": "Planned source-of-truth for sellers, listings, transactions, buy orders.",
-      "tags": [
-        "planned"
-      ],
+      "tags": ["planned"],
       "meta": {
         "confidence": "low"
       }
@@ -79,9 +65,7 @@
       "type": "datastore",
       "label": "OpenSearch 3.x",
       "description": "Planned hybrid (BM25F + kNN vector) search index over listings.",
-      "tags": [
-        "planned"
-      ],
+      "tags": ["planned"],
       "meta": {
         "confidence": "low"
       }
@@ -91,9 +75,7 @@
       "type": "datastore",
       "label": "MinIO (S3)",
       "description": "Planned object storage for listing data files.",
-      "tags": [
-        "planned"
-      ],
+      "tags": ["planned"],
       "meta": {
         "confidence": "low"
       }
@@ -103,10 +85,7 @@
       "type": "external",
       "label": "Stripe",
       "description": "Planned payment processor (test mode for MVP).",
-      "tags": [
-        "planned",
-        "third-party"
-      ],
+      "tags": ["planned", "third-party"],
       "meta": {
         "confidence": "low"
       }
@@ -116,10 +95,7 @@
       "type": "external",
       "label": "AWS Bedrock Titan v2",
       "description": "Planned embedding provider (1024-dim) for OpenSearch vector indexing.",
-      "tags": [
-        "planned",
-        "third-party"
-      ],
+      "tags": ["planned", "third-party"],
       "meta": {
         "confidence": "low"
       }
@@ -129,25 +105,8 @@
       "type": "external",
       "label": "Claude API",
       "description": "Planned LLM backend for buyer agents and analyze_data MCP tool.",
-      "tags": [
-        "planned",
-        "third-party"
-      ],
+      "tags": ["planned", "third-party"],
       "meta": {
-        "confidence": "low"
-      }
-    },
-    {
-      "id": "audit_events",
-      "type": "datastore",
-      "label": "Audit Events (Postgres)",
-      "description": "Append-only audit_events table in the existing Postgres 16 instance. Stores structured events for dispute resolution, trust engine seeding, and sandbox integrity verification.",
-      "tags": [
-        "planned",
-        "cross-cutting"
-      ],
-      "meta": {
-        "repo_path": "src/market-platform/internal/storage/postgres/audit_repo.go",
         "confidence": "low"
       }
     }
@@ -164,117 +123,67 @@
       "to": "buyers_agent_platform",
       "type": "sync",
       "label": "submits query",
-      "meta": {
-        "protocol": "REST",
-        "confidence": "low"
-      }
+      "meta": { "protocol": "REST", "confidence": "low" }
     },
     {
       "from": "buyers_agent_platform",
       "to": "market_platform",
       "type": "sync",
       "label": "search/analyze (MCP)",
-      "meta": {
-        "protocol": "MCP/SSE",
-        "confidence": "low"
-      }
+      "meta": { "protocol": "MCP/SSE", "confidence": "low" }
     },
     {
       "from": "buyers_agent_platform",
       "to": "claude_api",
       "type": "sync",
       "label": "agent inference",
-      "meta": {
-        "protocol": "HTTPS",
-        "confidence": "low"
-      }
+      "meta": { "protocol": "HTTPS", "confidence": "low" }
     },
     {
       "from": "web_frontend",
       "to": "market_platform",
       "type": "sync",
       "label": "purchase (Stripe flow)",
-      "meta": {
-        "protocol": "REST",
-        "confidence": "low"
-      }
+      "meta": { "protocol": "REST", "confidence": "low" }
     },
     {
       "from": "market_platform",
       "to": "postgres_db",
       "type": "readwrite",
-      "meta": {
-        "protocol": "sqlx",
-        "confidence": "low"
-      }
+      "meta": { "protocol": "sqlx", "confidence": "low" }
     },
     {
       "from": "market_platform",
       "to": "opensearch",
       "type": "readwrite",
-      "meta": {
-        "protocol": "HTTPS",
-        "confidence": "low"
-      }
+      "meta": { "protocol": "HTTPS", "confidence": "low" }
     },
     {
       "from": "market_platform",
       "to": "minio",
       "type": "readwrite",
-      "meta": {
-        "protocol": "S3",
-        "confidence": "low"
-      }
+      "meta": { "protocol": "S3", "confidence": "low" }
     },
     {
       "from": "market_platform",
       "to": "stripe",
       "type": "sync",
       "label": "charge",
-      "meta": {
-        "protocol": "HTTPS",
-        "confidence": "low"
-      }
+      "meta": { "protocol": "HTTPS", "confidence": "low" }
     },
     {
       "from": "market_platform",
       "to": "bedrock_titan",
       "type": "sync",
       "label": "embed text",
-      "meta": {
-        "protocol": "HTTPS",
-        "confidence": "low"
-      }
+      "meta": { "protocol": "HTTPS", "confidence": "low" }
     },
     {
       "from": "market_platform",
       "to": "claude_api",
       "type": "sync",
       "label": "analyze_data tool",
-      "meta": {
-        "protocol": "HTTPS",
-        "confidence": "low"
-      }
-    },
-    {
-      "from": "market_platform",
-      "to": "audit_events",
-      "type": "writes",
-      "label": "audit events",
-      "meta": {
-        "protocol": "sqlx",
-        "confidence": "low"
-      }
-    },
-    {
-      "from": "buyers_agent_platform",
-      "to": "audit_events",
-      "type": "writes",
-      "label": "agent sandbox events?",
-      "meta": {
-        "protocol": "TBD",
-        "confidence": "low"
-      }
+      "meta": { "protocol": "HTTPS", "confidence": "low" }
     }
   ]
 }
